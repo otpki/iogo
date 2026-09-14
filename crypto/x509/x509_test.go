@@ -719,6 +719,24 @@ func TestCreateSelfSignedCertificate(t *testing.T) {
 		}
 		tests = append(tests, test{"ML-DSA-44", mldsaPriv.PublicKey(), mldsaPriv, true, MLDSA44})
 	}
+	for _, cs := range circlSchemes {
+		pk, sk, err := cs.scheme.GenerateKey()
+		if err != nil {
+			t.Fatal()
+		}
+		tests = append(tests, struct {
+			name      string
+			pub, priv interface{}
+			checkSig  bool
+			sigAlgo   SignatureAlgorithm
+		}{
+			cs.scheme.Name(),
+			pk,
+			sk,
+			true,
+			cs.sga,
+		})
+	}
 
 	testExtKeyUsage := []ExtKeyUsage{ExtKeyUsageClientAuth, ExtKeyUsageServerAuth}
 	testUnknownExtKeyUsage := []asn1.ObjectIdentifier{[]int{1, 2, 3}, []int{2, 59, 1}}
@@ -3115,7 +3133,13 @@ func TestRSAPSAParameters(t *testing.T) {
 			hashOID = oidSHA384
 		case crypto.SHA512:
 			hashOID = oidSHA512
+		case crypto.SHAKE128:
+			hashOID = oidSHAKE128
+		case crypto.SHAKE256:
+			hashOID = oidSHAKE256
 		}
+
+		// possible ambiguous SHAKE: https://github.com/usnistgov/ACVP-Server/issues/338
 
 		params := pssParameters{
 			Hash: pkix.AlgorithmIdentifier{
@@ -3129,15 +3153,25 @@ func TestRSAPSAParameters(t *testing.T) {
 			TrailerField: 1,
 		}
 
-		mgf1Params := pkix.AlgorithmIdentifier{
-			Algorithm:  hashOID,
-			Parameters: asn1.NullRawValue,
-		}
+		if !hashOID.Equal(oidSHAKE128) && !hashOID.Equal(oidSHAKE256) {
+			mgf1Params := pkix.AlgorithmIdentifier{
+				Algorithm:  hashOID,
+				Parameters: asn1.NullRawValue,
+			}
 
-		var err error
-		params.MGF.Parameters.FullBytes, err = asn1.Marshal(mgf1Params)
-		if err != nil {
-			t.Fatalf("failed to marshal MGF parameters: %s", err)
+			var err error
+			params.MGF.Parameters.FullBytes, err = asn1.Marshal(mgf1Params)
+			if err != nil {
+				t.Fatalf("failed to marshal MGF parameters: %s", err)
+			}
+		} else {
+			if hashOID.Equal(oidSHAKE128) {
+				params.MGF.Algorithm = oidSHAKE128
+			}
+			if hashOID.Equal(oidSHAKE256) {
+				params.MGF.Algorithm = oidSHAKE256
+			}
+			params.MGF.Parameters = asn1.NullRawValue
 		}
 
 		serialized, err := asn1.Marshal(params)

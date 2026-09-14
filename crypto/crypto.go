@@ -62,6 +62,10 @@ func (h Hash) String() string {
 		return "BLAKE2b-512"
 	case MLDSAMu:
 		return "ML-DSA μ message representative"
+	case SHAKE128:
+		return "SHAKE-128"
+	case SHAKE256:
+		return "SHAKE-256"
 	default:
 		return "unknown hash value " + strconv.Itoa(int(h))
 	}
@@ -95,6 +99,8 @@ const (
 	// [pre-hashed μ message representative]: https://www.rfc-editor.org/rfc/rfc9881.html#externalmu
 	MLDSAMu
 
+	SHAKE128
+	SHAKE256
 	maxHash
 )
 
@@ -119,6 +125,8 @@ var digestSizes = []uint8{
 	BLAKE2b_384: 48,
 	BLAKE2b_512: 64,
 	MLDSAMu:     64,
+	SHAKE128:    32, // extendable
+	SHAKE256:    64, // extendable
 }
 
 // Size returns the length, in bytes, of a digest resulting from the given hash

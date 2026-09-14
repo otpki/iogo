@@ -10,6 +10,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509/pkix"
@@ -27,6 +28,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	circlPki "github.com/cloudflare/circl/pki"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -349,10 +351,27 @@ func parsePublicKey(keyData *publicKeyInfo) (any, error) {
 			return nil, errors.New("x509: invalid ECDSA parameters")
 		}
 		namedCurve := namedCurveFromOID(*namedCurveOID)
+		if namedCurve != nil {
+			return ecdsa.ParseUncompressedPublicKey(namedCurve, data)
+		}
+		// if we did not find it in STD, try circl
+		if namedCurve == nil {
+			namedCurve = circlPki.CurveByOid(*namedCurveOID)
+		}
 		if namedCurve == nil {
 			return nil, errors.New("x509: unsupported elliptic curve")
 		}
-		return ecdsa.ParseUncompressedPublicKey(namedCurve, data)
+		der := cryptobyte.String(keyData.PublicKey.RightAlign())
+		x, y := elliptic.Unmarshal(namedCurve, der)
+		if x == nil {
+			return nil, errors.New("x509: failed to unmarshal elliptic curve point")
+		}
+		pub := &ecdsa.PublicKey{
+			Curve: namedCurve,
+			X:     x,
+			Y:     y,
+		}
+		return pub, nil
 	case oid.Equal(oidPublicKeyEd25519):
 		// RFC 8410, Section 3
 		// > For all of the OIDs, the parameters MUST be absent.
@@ -406,6 +425,19 @@ func parsePublicKey(keyData *publicKeyInfo) (any, error) {
 		}
 		return pub, nil
 	default:
+		if scheme := circlPki.SchemeByOid(oid); scheme != nil {
+			if len(keyData.Algorithm.Parameters.FullBytes) != 0 {
+				return nil, fmt.Errorf(
+					"x509: %s key encoded with illegal parameters",
+					scheme.Name(),
+				)
+			}
+			pub, err := scheme.UnmarshalBinaryPublicKey(data)
+			if err != nil {
+				return nil, fmt.Errorf("x509: %s: %v", scheme.Name(), err)
+			}
+			return pub, nil
+		}
 		return nil, errors.New("x509: unknown public key algorithm")
 	}
 }
@@ -910,6 +942,77 @@ func processExtensions(out *Certificate) error {
 					return errors.New("x509: invalid inhibit any policy extension")
 				}
 				out.InhibitAnyPolicyZero = out.InhibitAnyPolicy == 0
+			case 72:
+				val := cryptobyte.String(e.Value)
+				// PublicKeyInfo ::= SEQUENCE {
+				//   algorithm       AlgorithmIdentifier,
+				//   subjectPublicKey BIT STRING
+				// }
+				// AlgorithmIdentifier ::= SEQUENCE {
+				//   algorithm       OBJECT IDENTIFIER,
+				//   parameters      ANY DEFINED BY algorithm OPTIONAL
+				// }
+				var pkiSeq cryptobyte.String
+
+				success := false
+				if val.ReadASN1(&pkiSeq, cryptobyte_asn1.SEQUENCE) {
+					var algSeq cryptobyte.String
+					if pkiSeq.ReadASN1(&algSeq, cryptobyte_asn1.SEQUENCE) {
+						var oid asn1.ObjectIdentifier
+						if algSeq.ReadASN1ObjectIdentifier(&oid) {
+							// Save algorithm parameters if any
+							var paramBytes []byte
+							if !algSeq.Empty() {
+								// Read remaining bytes as parameters
+								algSeq.ReadBytes(&paramBytes, len(algSeq))
+							}
+
+							// Read the public key bits
+							var pubKeyBits asn1.BitString
+							if pkiSeq.ReadASN1BitString(&pubKeyBits) {
+								out.AlternativePublicKeyAlgorithm = getPublicKeyAlgorithmFromOID(oid)
+
+								// Construct the proper publicKeyInfo structure
+								keyInfo := &publicKeyInfo{
+									Algorithm: pkix.AlgorithmIdentifier{
+										Algorithm: oid,
+										Parameters: asn1.RawValue{
+											FullBytes: paramBytes,
+										},
+									},
+									PublicKey: pubKeyBits,
+								}
+
+								out.AlternativePublicKey, err = parsePublicKey(keyInfo)
+								if err != nil {
+									return err
+								}
+								success = true
+							}
+						}
+					}
+				}
+				// if we failed to extract the OID, set to unknown
+				if !success {
+					out.AlternativePublicKeyAlgorithm = UnknownPublicKeyAlgorithm
+				}
+			case 73:
+				var aiSeq cryptobyte.String
+				val := cryptobyte.String(e.Value)
+				if val.ReadASN1(&aiSeq, cryptobyte_asn1.SEQUENCE) {
+					ai, err := parseAI(aiSeq)
+					if err == nil {
+						out.AlternativeSignatureAlgorithm = getSignatureAlgorithmFromAI(ai)
+						break
+					}
+				}
+				out.AlternativeSignatureAlgorithm = UnknownSignatureAlgorithm
+			case 74:
+				var bitStr asn1.BitString
+				val := cryptobyte.String(e.Value)
+				if val.ReadASN1BitString(&bitStr) {
+					out.AlternativeSignature = bitStr.Bytes
+				}
 			default:
 				// Unknown extensions are recorded if critical.
 				unhandled = true
@@ -1365,6 +1468,20 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 				if !value.ReadASN1Integer(rl.Number) {
 					return nil, errors.New("x509: malformed crl number")
 				}
+			}
+			if ext.Id.Equal(oidExtensionAltSigAlgorithm) {
+				altAI := &pkix.AlgorithmIdentifier{}
+				if _, err := asn1.Unmarshal(ext.Value, altAI); err != nil {
+					return nil, err
+				}
+				rl.AlternativeSignatureAlgorithm = getSignatureAlgorithmFromAI(*altAI)
+			}
+			if ext.Id.Equal(oidExtensionAltSigValue) {
+				sigBitStr := &asn1.BitString{}
+				if _, err := asn1.Unmarshal(ext.Value, sigBitStr); err != nil {
+					return nil, err
+				}
+				rl.AlternativeSignature = sigBitStr.Bytes
 			}
 			rl.Extensions = append(rl.Extensions, ext)
 		}

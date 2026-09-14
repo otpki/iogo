@@ -52,6 +52,9 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
+	circlEcc "github.com/cloudflare/circl/ecc"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -99,14 +102,21 @@ func marshalPublicKey(pub any) (publicKeyBytes []byte, publicKeyAlgorithm pkix.A
 		// RFC 3279, Section 2.3.1.
 		publicKeyAlgorithm.Parameters = asn1.NullRawValue
 	case *ecdsa.PublicKey:
-		oid, ok := oidFromNamedCurve(pub.Curve)
+		var oid asn1.ObjectIdentifier
+		var ok bool
+		if circlCurve, compat := pub.Curve.(circlEcc.Curve); compat {
+			oid = circlCurve.Oid()
+			ok = true
+		} else {
+			oid, ok = oidFromNamedCurve(pub.Curve)
+		}
 		if !ok {
 			return nil, pkix.AlgorithmIdentifier{}, errors.New("x509: unsupported elliptic curve")
 		}
-		publicKeyBytes, err = pub.Bytes()
-		if err != nil {
-			return nil, pkix.AlgorithmIdentifier{}, err
+		if !pub.Curve.IsOnCurve(pub.X, pub.Y) {
+			return nil, pkix.AlgorithmIdentifier{}, errors.New("x509: invalid elliptic curve public key")
 		}
+		publicKeyBytes = elliptic.Marshal(pub.Curve, pub.X, pub.Y)
 		publicKeyAlgorithm.Algorithm = oidPublicKeyECDSA
 		var paramBytes []byte
 		paramBytes, err = asn1.Marshal(oid)
@@ -141,6 +151,14 @@ func marshalPublicKey(pub any) (publicKeyBytes []byte, publicKeyAlgorithm pkix.A
 			}
 			publicKeyAlgorithm.Parameters.FullBytes = paramBytes
 		}
+	case circlSign.PublicKey:
+		scheme, ok := pub.Scheme().(circlPki.CertificateScheme)
+		if !ok {
+			return nil, pkix.AlgorithmIdentifier{}, errors.New(
+				"x509: circl scheme is not CertificateScheme")
+		}
+		publicKeyBytes, _ = pub.MarshalBinary()
+		publicKeyAlgorithm.Algorithm = scheme.Oid()
 	default:
 		return nil, pkix.AlgorithmIdentifier{}, fmt.Errorf("x509: unsupported public key type: %T", pub)
 	}
@@ -243,6 +261,34 @@ const (
 	MLDSA44
 	MLDSA65
 	MLDSA87
+	PureEd448
+	PureEdDilithium2
+	PureEdDilithium3
+	PureDilithium2
+	PureDilithium3
+	PureDilithium5
+	SLHDSAWithSHA128s
+	SLHDSAWithSHAKE128s
+	SLHDSAWithSHA128f
+	SLHDSAWithSHAKE128f
+	SLHDSAWithSHA192s
+	SLHDSAWithSHAKE192s
+	SLHDSAWithSHA192f
+	SLHDSAWithSHAKE192f
+	SLHDSAWithSHA256s
+	SLHDSAWithSHAKE256s
+	SLHDSAWithSHA256f
+	SLHDSAWithSHAKE256f
+	ECDSAWithSHAKE128
+	ECDSAWithSHAKE256
+	ECDSAWithSHA3256
+	ECDSAWithSHA3384
+	ECDSAWithSHA3512
+	SHAKE128WithRSAPSS
+	SHAKE256WithRSAPSS
+	SHA3256WithRSA
+	SHA3384WithRSA
+	SHA3512WithRSA
 )
 
 func (algo SignatureAlgorithm) isRSAPSS() bool {
@@ -281,14 +327,50 @@ const (
 	ECDSA
 	Ed25519
 	MLDSA
+	Ed448
+	EdDilithium2
+	EdDilithium3
+	Dilithium2
+	Dilithium3
+	Dilithium5
+	SLHDSASHA128s
+	SLHDSASHAKE128s
+	SLHDSASHA128f
+	SLHDSASHAKE128f
+	SLHDSASHA192s
+	SLHDSASHAKE192s
+	SLHDSASHA192f
+	SLHDSASHAKE192f
+	SLHDSASHA256s
+	SLHDSASHAKE256s
+	SLHDSASHA256f
+	SLHDSASHAKE256f
 )
 
 var publicKeyAlgoName = [...]string{
-	RSA:     "RSA",
-	DSA:     "DSA",
-	ECDSA:   "ECDSA",
-	Ed25519: "Ed25519",
-	MLDSA:   "ML-DSA",
+	RSA:             "RSA",
+	DSA:             "DSA",
+	ECDSA:           "ECDSA",
+	Ed25519:         "Ed25519",
+	MLDSA:           "ML-DSA",
+	Ed448:           "Ed448",
+	EdDilithium2:    "Ed25519-Dilithium2",
+	EdDilithium3:    "Ed558-Dilithium3",
+	Dilithium2:      "Dilithium2",
+	Dilithium3:      "Dilithium3",
+	Dilithium5:      "Dilithium5",
+	SLHDSASHA128s:   "SLH-DSA-SHA2-128s",
+	SLHDSASHAKE128s: "SLH-DSA-SHAKE-128s",
+	SLHDSASHA128f:   "SLH-DSA-SHA2-128f",
+	SLHDSASHAKE128f: "SLH-DSA-SHAKE-128f",
+	SLHDSASHA192s:   "SLH-DSA-SHA2-192s",
+	SLHDSASHAKE192s: "SLH-DSA-SHAKE-192s",
+	SLHDSASHA192f:   "SLH-DSA-SHA2-192f",
+	SLHDSASHAKE192f: "SLH-DSA-SHAKE-192f",
+	SLHDSASHA256s:   "SLH-DSA-SHA2-256s",
+	SLHDSASHAKE256s: "SLH-DSA-SHAKE-256s",
+	SLHDSASHA256f:   "SLH-DSA-SHA2-256f",
+	SLHDSASHAKE256f: "SLH-DSA-SHAKE-256f",
 }
 
 func (algo PublicKeyAlgorithm) String() string {
@@ -347,23 +429,38 @@ func (algo PublicKeyAlgorithm) String() string {
 //
 //	id-Ed25519   OBJECT IDENTIFIER ::= { 1 3 101 112 }
 var (
-	oidSignatureMD5WithRSA      = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 4}
-	oidSignatureSHA1WithRSA     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 5}
-	oidSignatureSHA256WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 11}
-	oidSignatureSHA384WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 12}
-	oidSignatureSHA512WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 13}
-	oidSignatureRSAPSS          = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 10}
-	oidSignatureDSAWithSHA1     = asn1.ObjectIdentifier{1, 2, 840, 10040, 4, 3}
-	oidSignatureDSAWithSHA256   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 2}
-	oidSignatureECDSAWithSHA1   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 1}
-	oidSignatureECDSAWithSHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
-	oidSignatureECDSAWithSHA384 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
-	oidSignatureECDSAWithSHA512 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 4}
-	oidSignatureEd25519         = asn1.ObjectIdentifier{1, 3, 101, 112}
+	oidSignatureMD5WithRSA        = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 4}
+	oidSignatureSHA1WithRSA       = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 5}
+	oidSignatureSHA256WithRSA     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 11}
+	oidSignatureSHA384WithRSA     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 12}
+	oidSignatureSHA512WithRSA     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 13}
+	oidSignatureRSAPSS            = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 10}
+	oidSignatureDSAWithSHA1       = asn1.ObjectIdentifier{1, 2, 840, 10040, 4, 3}
+	oidSignatureDSAWithSHA256     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 2}
+	oidSignatureECDSAWithSHA1     = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 1}
+	oidSignatureECDSAWithSHA256   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
+	oidSignatureECDSAWithSHA384   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
+	oidSignatureECDSAWithSHA512   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 4}
+	oidSignatureEd25519           = asn1.ObjectIdentifier{1, 3, 101, 112}
+	oidSignatureECDSAWithSHAKE128 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 6, 32}
+	oidSignatureECDSAWithSHAKE256 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 6, 33}
+	oidSignatureECDSAWithSHA3256  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 10}
+	oidSignatureECDSAWithSHA3384  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 11}
+	oidSignatureECDSAWithSHA3512  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 12}
+	oidSignatureRSAPSSSHAKE128    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 6, 30}
+	oidSignatureRSAPSSSHAKE256    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 6, 31}
+	oidSignatureRSAWithSHA3256    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 14}
+	oidSignatureRSAWithSHA3384    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 15}
+	oidSignatureRSAWithSHA3512    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 16}
 
-	oidSHA256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	oidSHA384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
-	oidSHA512 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+	oidSHA256   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	oidSHA384   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	oidSHA512   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+	oidSHAKE128 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 11}
+	oidSHAKE256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 12}
+	//oidSHA3_256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 8}
+	//oidSHA3_384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 9}
+	//oidSHA3_512 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 10}
 
 	oidMGF1 = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 8}
 
@@ -401,6 +498,16 @@ var signatureAlgorithmDetails = []struct {
 	{MLDSA44, "ML-DSA-44", oidPublicKeyMLDSA44, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
 	{MLDSA65, "ML-DSA-65", oidPublicKeyMLDSA65, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
 	{MLDSA87, "ML-DSA-87", oidPublicKeyMLDSA87, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
+	{ECDSAWithSHAKE128, "ECDSA-SHAKE128", oidSignatureECDSAWithSHAKE128, emptyRawValue, ECDSA, crypto.SHAKE128, false},
+	{ECDSAWithSHAKE256, "ECDSA-SHAKE256", oidSignatureECDSAWithSHAKE256, emptyRawValue, ECDSA, crypto.SHAKE256, false},
+	{ECDSAWithSHA3256, "ECDSA-SHA3-256", oidSignatureECDSAWithSHA3256, emptyRawValue, ECDSA, crypto.SHA3_256, false},
+	{ECDSAWithSHA3384, "ECDSA-SHA3-384", oidSignatureECDSAWithSHA3384, emptyRawValue, ECDSA, crypto.SHA3_384, false},
+	{ECDSAWithSHA3512, "ECDSA-SHA3-512", oidSignatureECDSAWithSHA3512, emptyRawValue, ECDSA, crypto.SHA3_512, false},
+	{SHAKE128WithRSAPSS, "RSASSA-PSS-SHAKE128", oidSignatureRSAPSSSHAKE128, pssParametersSHAKE128, RSA, crypto.SHAKE128, true},
+	{SHAKE256WithRSAPSS, "RSASSA-PSS-SHAKE256", oidSignatureRSAPSSSHAKE256, pssParametersSHAKE256, RSA, crypto.SHAKE256, true},
+	{SHA3256WithRSA, "SHA3-256-RSA", oidSignatureRSAWithSHA3256, emptyRawValue, RSA, crypto.SHA3_256, false},
+	{SHA3384WithRSA, "SHA3-384-RSA", oidSignatureRSAWithSHA3384, emptyRawValue, RSA, crypto.SHA3_384, false},
+	{SHA3512WithRSA, "SHA3-512-RSA", oidSignatureRSAWithSHA3512, emptyRawValue, RSA, crypto.SHA3_512, false},
 }
 
 var emptyRawValue = asn1.RawValue{}
@@ -413,9 +520,11 @@ var emptyRawValue = asn1.RawValue{}
 //   - saltLength contains the length of the associated hash
 //   - trailerField always contains the default trailerFieldBC value
 var (
-	pssParametersSHA256 = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 162, 3, 2, 1, 32}}
-	pssParametersSHA384 = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 162, 3, 2, 1, 48}}
-	pssParametersSHA512 = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 162, 3, 2, 1, 64}}
+	pssParametersSHA256   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 162, 3, 2, 1, 32}}
+	pssParametersSHA384   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 162, 3, 2, 1, 48}}
+	pssParametersSHA512   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 162, 3, 2, 1, 64}}
+	pssParametersSHAKE128 = asn1.RawValue{FullBytes: []byte{48, 39, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 11, 5, 0, 161, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 11, 5, 0, 162, 3, 2, 1, 32}}
+	pssParametersSHAKE256 = asn1.RawValue{FullBytes: []byte{48, 39, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 12, 5, 0, 161, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 12, 5, 0, 162, 3, 2, 1, 64}}
 )
 
 // pssParameters reflects the parameters in an AlgorithmIdentifier that
@@ -434,7 +543,8 @@ func getSignatureAlgorithmFromAI(ai pkix.AlgorithmIdentifier) SignatureAlgorithm
 	if ai.Algorithm.Equal(oidSignatureEd25519) ||
 		ai.Algorithm.Equal(oidPublicKeyMLDSA44) ||
 		ai.Algorithm.Equal(oidPublicKeyMLDSA65) ||
-		ai.Algorithm.Equal(oidPublicKeyMLDSA87) {
+		ai.Algorithm.Equal(oidPublicKeyMLDSA87) ||
+		ai.Algorithm.Equal(oidSignatureEd25519) || circlPki.SchemeByOid(ai.Algorithm) != nil {
 		// RFC 8410, Section 3
 		// > For all of the OIDs, the parameters MUST be absent.
 		// RFC 9881, Section 2
@@ -486,6 +596,10 @@ func getSignatureAlgorithmFromAI(ai pkix.AlgorithmIdentifier) SignatureAlgorithm
 		return SHA384WithRSAPSS
 	case params.Hash.Algorithm.Equal(oidSHA512) && params.SaltLength == 64:
 		return SHA512WithRSAPSS
+	case params.Hash.Algorithm.Equal(oidSHAKE128) && params.SaltLength == 32:
+		return SHAKE128WithRSAPSS
+	case params.Hash.Algorithm.Equal(oidSHAKE256) && params.SaltLength == 64:
+		return SHAKE256WithRSAPSS
 	}
 
 	return UnknownSignatureAlgorithm
@@ -553,8 +667,13 @@ func getPublicKeyAlgorithmFromOID(oid asn1.ObjectIdentifier) PublicKeyAlgorithm 
 			return UnknownPublicKeyAlgorithm
 		}
 		return MLDSA
+	default:
+		scheme := circlPki.SchemeByOid(oid)
+		if scheme == nil {
+			return UnknownPublicKeyAlgorithm
+		}
+		return PublicKeyAlgorithmByCirclScheme(scheme)
 	}
-	return UnknownPublicKeyAlgorithm
 }
 
 // RFC 5480, 2.1.1.1. Named Curve
@@ -948,6 +1067,12 @@ type Certificate struct {
 
 	// PolicyMappings contains a list of policy mappings included in the certificate.
 	PolicyMappings []PolicyMapping
+
+	// --- IOGO ---
+	AlternativeSignatureAlgorithm SignatureAlgorithm
+	AlternativeSignature          []byte             // only used for parsing
+	AlternativePublicKeyAlgorithm PublicKeyAlgorithm // only used for parsing
+	AlternativePublicKey          any                // only used for parsing
 }
 
 // PolicyMapping represents a policy mapping entry in the policyMappings extension.
@@ -1018,6 +1143,23 @@ func (c *Certificate) CheckSignatureFrom(parent *Certificate) error {
 	return checkSignature(c.SignatureAlgorithm, c.RawTBSCertificate, c.Signature, parent.PublicKey, false)
 }
 
+func (c *Certificate) CheckAltSignatureFrom(parent *Certificate) error {
+	if parent.Version == 3 && !parent.BasicConstraintsValid ||
+		parent.BasicConstraintsValid && !parent.IsCA {
+		return ConstraintViolationError{}
+	}
+
+	if parent.KeyUsage != 0 && parent.KeyUsage&KeyUsageCertSign == 0 {
+		return ConstraintViolationError{}
+	}
+
+	if parent.PublicKeyAlgorithm == UnknownPublicKeyAlgorithm {
+		return ErrUnsupportedAlgorithm
+	}
+
+	return checkAltSignature(parent.Extensions, parent.AlternativeSignatureAlgorithm, c.RawTBSCertificate, c.Signature)
+}
+
 // CheckSignature verifies that signature is a valid signature over signed from
 // c's public key.
 //
@@ -1027,6 +1169,10 @@ func (c *Certificate) CheckSignatureFrom(parent *Certificate) error {
 // signatures are currently accepted.
 func (c *Certificate) CheckSignature(algo SignatureAlgorithm, signed, signature []byte) error {
 	return checkSignature(algo, signed, signature, c.PublicKey, true)
+}
+
+func (c *Certificate) CheckAltSignature(algo SignatureAlgorithm, signed, signature []byte) error {
+	return checkAltSignature(c.Extensions, algo, signed, signature)
 }
 
 func (c *Certificate) hasNameConstraints() bool {
@@ -1050,6 +1196,19 @@ func signatureMLDSAParametersMismatchError(expectedSigAlgo SignatureAlgorithm, p
 	return fmt.Errorf("x509: signature algorithm specifies an ML-DSA public key with %s parameters, but have a public key with %s parameters", expectedSigAlgo, pubKey.Parameters())
 }
 
+func checkAltSignature(exts []pkix.Extension, algo SignatureAlgorithm, signed, signature []byte) error {
+	for _, ext := range exts {
+		if ext.Id.Equal(oidExtensionSubjectAltPublicKeyInfo) {
+			pubKey, err := ParsePKIXPublicKey(ext.Value)
+			if err != nil {
+				return err
+			}
+			return checkSignature(algo, signed, signature, pubKey, true)
+		}
+	}
+	return errors.New("x509: no alt signature found")
+}
+
 // checkSignature verifies that signature is a valid signature over signed from
 // a crypto.PublicKey.
 func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey crypto.PublicKey, allowSHA1 bool) (err error) {
@@ -1066,7 +1225,8 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 
 	switch hashType {
 	case crypto.Hash(0):
-		if pubKeyAlgo != Ed25519 && pubKeyAlgo != MLDSA {
+		if pubKeyAlgo != Ed25519 && pubKeyAlgo != MLDSA &&
+			CirclSchemeByPublicKeyAlgorithm(pubKeyAlgo) == nil {
 			return ErrUnsupportedAlgorithm
 		}
 	case crypto.MD5:
@@ -1134,6 +1294,19 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 		}
 		if err := mldsa.Verify(pub, signed, signature, nil); err != nil {
 			return fmt.Errorf("x509: ML-DSA verification failure: %w", err)
+		}
+		return
+	case circlSign.PublicKey:
+		scheme := pub.Scheme()
+		expectedAlg := PublicKeyAlgorithmByCirclScheme(scheme)
+		if expectedAlg == UnknownPublicKeyAlgorithm {
+			return ErrUnsupportedAlgorithm
+		}
+		if expectedAlg != pubKeyAlgo {
+			return signaturePublicKeyAlgoMismatchError(pubKeyAlgo, pub)
+		}
+		if !scheme.Verify(pub, signed, signature, nil) {
+			return fmt.Errorf("x509: %s verification failed", scheme.Name())
 		}
 		return
 	}
@@ -1218,18 +1391,21 @@ func asn1BitLength(bitString []byte) int {
 }
 
 var (
-	oidExtensionSubjectKeyId          = []int{2, 5, 29, 14}
-	oidExtensionKeyUsage              = []int{2, 5, 29, 15}
-	oidExtensionExtendedKeyUsage      = []int{2, 5, 29, 37}
-	oidExtensionAuthorityKeyId        = []int{2, 5, 29, 35}
-	oidExtensionBasicConstraints      = []int{2, 5, 29, 19}
-	oidExtensionSubjectAltName        = []int{2, 5, 29, 17}
-	oidExtensionCertificatePolicies   = []int{2, 5, 29, 32}
-	oidExtensionNameConstraints       = []int{2, 5, 29, 30}
-	oidExtensionCRLDistributionPoints = []int{2, 5, 29, 31}
-	oidExtensionAuthorityInfoAccess   = []int{1, 3, 6, 1, 5, 5, 7, 1, 1}
-	oidExtensionCRLNumber             = []int{2, 5, 29, 20}
-	oidExtensionReasonCode            = []int{2, 5, 29, 21}
+	oidExtensionSubjectKeyId            = []int{2, 5, 29, 14}
+	oidExtensionKeyUsage                = []int{2, 5, 29, 15}
+	oidExtensionExtendedKeyUsage        = []int{2, 5, 29, 37}
+	oidExtensionAuthorityKeyId          = []int{2, 5, 29, 35}
+	oidExtensionBasicConstraints        = []int{2, 5, 29, 19}
+	oidExtensionSubjectAltName          = []int{2, 5, 29, 17}
+	oidExtensionCertificatePolicies     = []int{2, 5, 29, 32}
+	oidExtensionNameConstraints         = []int{2, 5, 29, 30}
+	oidExtensionCRLDistributionPoints   = []int{2, 5, 29, 31}
+	oidExtensionAuthorityInfoAccess     = []int{1, 3, 6, 1, 5, 5, 7, 1, 1}
+	oidExtensionCRLNumber               = []int{2, 5, 29, 20}
+	oidExtensionReasonCode              = []int{2, 5, 29, 21}
+	oidExtensionSubjectAltPublicKeyInfo = []int{2, 5, 29, 72}
+	oidExtensionAltSigAlgorithm         = []int{2, 5, 29, 73}
+	oidExtensionAltSigValue             = []int{2, 5, 29, 74}
 )
 
 var (
@@ -1659,7 +1835,7 @@ func signingParamsForKey(key crypto.Signer, sigAlgo SignatureAlgorithm) (Signatu
 		case elliptic.P521():
 			defaultAlgo = ECDSAWithSHA512
 		default:
-			return 0, ai, errors.New("x509: unsupported elliptic curve")
+			defaultAlgo = ECDSAWithSHA256 // this will work with all custom keys
 		}
 
 	case ed25519.PublicKey:
@@ -1679,8 +1855,27 @@ func signingParamsForKey(key crypto.Signer, sigAlgo SignatureAlgorithm) (Signatu
 			return 0, ai, fmt.Errorf("x509: unsupported ML-DSA parameters: %s", pub.Parameters())
 		}
 
+	case circlSign.PublicKey:
+		scheme := pub.Scheme()
+		_, ok := scheme.(circlPki.CertificateScheme)
+		if !ok {
+			return 0, ai, errors.New("x509: circl scheme is not CertificateScheme")
+		}
+		pubType = PublicKeyAlgorithmByCirclScheme(scheme)
+		if pubType == UnknownPublicKeyAlgorithm {
+			return 0, ai, errors.New("x509: particular circl scheme not supported")
+		}
+		for _, circlScheme := range circlSchemes {
+			if circlScheme.alg == pubType {
+				defaultAlgo = circlScheme.sga
+			}
+		}
+		if defaultAlgo == UnknownSignatureAlgorithm {
+			return 0, ai, errors.New("x509: particular circl scheme not supported")
+		}
+
 	default:
-		return 0, ai, errors.New("x509: only RSA, ECDSA, ML-DSA and Ed25519 keys supported")
+		return 0, ai, errors.New("x509: only RSA, ECDSA, ML-DSA, Ed25519 and circl keys supported")
 	}
 
 	if sigAlgo == 0 {
@@ -1736,6 +1931,273 @@ func signTBS(tbs []byte, key crypto.Signer, sigAlg SignatureAlgorithm, rand io.R
 // emptyASN1Subject is the ASN.1 DER encoding of an empty Subject, which is
 // just an empty SEQUENCE.
 var emptyASN1Subject = []byte{0x30, 0}
+
+// CreateCertificateWithAltSigner creates a new X.509 v3 certificate based on a template.
+// The following members of template are currently used:
+//
+//   - AuthorityKeyId
+//   - BasicConstraintsValid
+//   - CRLDistributionPoints
+//   - DNSNames
+//   - EmailAddresses
+//   - ExcludedDNSDomains
+//   - ExcludedEmailAddresses
+//   - ExcludedIPRanges
+//   - ExcludedURIDomains
+//   - ExtKeyUsage
+//   - ExtraExtensions
+//   - IPAddresses
+//   - IsCA
+//   - IssuingCertificateURL
+//   - KeyUsage
+//   - MaxPathLen
+//   - MaxPathLenZero
+//   - NotAfter
+//   - NotBefore
+//   - OCSPServer
+//   - PermittedDNSDomains
+//   - PermittedDNSDomainsCritical
+//   - PermittedEmailAddresses
+//   - PermittedIPRanges
+//   - PermittedURIDomains
+//   - PolicyIdentifiers (see note below)
+//   - Policies (see note below)
+//   - SerialNumber
+//   - SignatureAlgorithm
+//   - Subject
+//   - SubjectKeyId
+//   - URIs
+//   - UnknownExtKeyUsage
+//   - AlternativeSignatureAlgorithm
+//
+// The certificate is signed by parent. If parent is equal to template then the
+// certificate is self-signed. The parameter pub is the public key of the
+// certificate to be generated and priv is the private key of the signer.
+// altPub is the public key of the certificate to be generated and altPriv
+// is the private key of the signer.
+//
+// The returned slice is the certificate in DER encoding.
+//
+// The currently supported key types are *rsa.PublicKey, *ecdsa.PublicKey,
+// ed25519.PublicKey, and circl.PublicKey. pub must be a supported key type,
+// and priv must be a crypto.Signer or crypto.MessageSigner with a supported public key.
+//
+// The AuthorityKeyId will be taken from the SubjectKeyId of parent, if any,
+// unless the resulting certificate is self-signed. Otherwise the value from
+// template will be used.
+//
+// If SubjectKeyId from template is empty and the template is a CA, SubjectKeyId
+// will be generated from the hash of the public key.
+//
+// If template.SerialNumber is nil, a serial number will be generated which
+// conforms to RFC 5280, Section 4.1.2.2 using entropy from rand.
+//
+// The PolicyIdentifier and Policies fields can both be used to marshal certificate
+// policy OIDs. By default, only the Policies is marshaled, but if the
+// GODEBUG setting "x509usepolicies" has the value "0", the PolicyIdentifiers field will
+// be marshaled instead of the Policies field. This changed in Go 1.24. The Policies field can
+// be used to marshal policy OIDs which have components that are larger than 31
+// bits.
+func CreateCertificateWithAltSigner(rand io.Reader, template, parent *Certificate, pub, priv, altPub, altPriv any) ([]byte, error) {
+	key, ok := priv.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("x509: certificate private key does not implement crypto.Signer")
+	}
+
+	altKey, ok := altPriv.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("x509: certificate alt private key does not implement crypto.Signer")
+	}
+
+	serialNumber := template.SerialNumber
+	if serialNumber == nil {
+		// Generate a serial number following RFC 5280, Section 4.1.2.2 if one
+		// is not provided. The serial number must be positive and at most 20
+		// octets *when encoded*.
+		serialBytes := make([]byte, 20)
+		if _, err := io.ReadFull(rand, serialBytes); err != nil {
+			return nil, err
+		}
+		// If the top bit is set, the serial will be padded with a leading zero
+		// byte during encoding, so that it's not interpreted as a negative
+		// integer. This padding would make the serial 21 octets so we clear the
+		// top bit to ensure the correct length in all cases.
+		serialBytes[0] &= 0b0111_1111
+		serialNumber = new(big.Int).SetBytes(serialBytes)
+	}
+
+	// RFC 5280 Section 4.1.2.2: serial number must be positive
+	//
+	// We _should_ also restrict serials to <= 20 octets, but it turns out a lot of people
+	// get this wrong, in part because the encoding can itself alter the length of the
+	// serial. For now we accept these non-conformant serials.
+	if serialNumber.Sign() == -1 {
+		return nil, errors.New("x509: serial number must be positive")
+	}
+
+	if template.BasicConstraintsValid && template.MaxPathLen < -1 {
+		return nil, errors.New("x509: invalid MaxPathLen, must be greater or equal to -1")
+	}
+
+	if template.BasicConstraintsValid && !template.IsCA && template.MaxPathLen != -1 && (template.MaxPathLen != 0 || template.MaxPathLenZero) {
+		return nil, errors.New("x509: only CAs are allowed to specify MaxPathLen")
+	}
+
+	signatureAlgorithm, algorithmIdentifier, err := signingParamsForKey(key, template.SignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignatureAlgorithm, altAlgorithmIdentifier, err := signingParamsForKey(altKey, template.AlternativeSignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	publicKeyBytes, publicKeyAlgorithm, err := marshalPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+	if getPublicKeyAlgorithmFromOID(publicKeyAlgorithm.Algorithm) == UnknownPublicKeyAlgorithm {
+		return nil, fmt.Errorf("x509: unsupported public key type: %T", pub)
+	}
+
+	asn1Issuer, err := subjectBytes(parent)
+	if err != nil {
+		return nil, err
+	}
+
+	asn1Subject, err := subjectBytes(template)
+	if err != nil {
+		return nil, err
+	}
+
+	authorityKeyId := template.AuthorityKeyId
+	if !bytes.Equal(asn1Issuer, asn1Subject) && len(parent.SubjectKeyId) > 0 {
+		authorityKeyId = parent.SubjectKeyId
+	}
+
+	subjectKeyId := template.SubjectKeyId
+	if len(subjectKeyId) == 0 && template.IsCA {
+		if x509sha256skid.Value() == "0" {
+			x509sha256skid.IncNonDefault()
+			// SubjectKeyId generated using method 1 in RFC 5280, Section 4.2.1.2:
+			//   (1) The keyIdentifier is composed of the 160-bit SHA-1 hash of the
+			//   value of the BIT STRING subjectPublicKey (excluding the tag,
+			//   length, and number of unused bits).
+			h := sha1.Sum(publicKeyBytes)
+			subjectKeyId = h[:]
+		} else {
+			// SubjectKeyId generated using method 1 in RFC 7093, Section 2:
+			//    1) The keyIdentifier is composed of the leftmost 160-bits of the
+			//    SHA-256 hash of the value of the BIT STRING subjectPublicKey
+			//    (excluding the tag, length, and number of unused bits).
+			h := sha256.Sum256(publicKeyBytes)
+			subjectKeyId = h[:20]
+		}
+	}
+
+	// Check that the signer's public key matches the private key, if available.
+	type privateKey interface {
+		Equal(crypto.PublicKey) bool
+	}
+	if privPub, ok := key.Public().(privateKey); !ok {
+		return nil, errors.New("x509: internal error: supported public key does not implement Equal")
+	} else if parent.PublicKey != nil && !privPub.Equal(parent.PublicKey) {
+		return nil, errors.New("x509: provided PrivateKey doesn't match parent's PublicKey")
+	}
+
+	if altPub != nil && !oidInExtensions(oidExtensionSubjectAltPublicKeyInfo, template.ExtraExtensions) {
+		altPublicKeyBytes, err := MarshalPKIXPublicKey(altPub)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
+			Id:       oidExtensionSubjectAltPublicKeyInfo,
+			Critical: false,
+			Value:    altPublicKeyBytes,
+		})
+	}
+
+	if !oidInExtensions(oidExtensionAltSigAlgorithm, template.ExtraExtensions) {
+		altAlgoIdent, err := asn1.Marshal(altAlgorithmIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
+			Id:       oidExtensionAltSigAlgorithm,
+			Critical: false,
+			Value:    altAlgoIdent,
+		})
+	}
+
+	extensions, err := buildCertExtensions(template, bytes.Equal(asn1Subject, emptyASN1Subject), authorityKeyId, subjectKeyId)
+	if err != nil {
+		return nil, err
+	}
+
+	encodedPublicKey := asn1.BitString{BitLength: len(publicKeyBytes) * 8, Bytes: publicKeyBytes}
+	c := tbsCertificate{
+		Version:            2,
+		SerialNumber:       serialNumber,
+		SignatureAlgorithm: algorithmIdentifier,
+		Issuer:             asn1.RawValue{FullBytes: asn1Issuer},
+		Validity:           validity{template.NotBefore.UTC(), template.NotAfter.UTC()},
+		Subject:            asn1.RawValue{FullBytes: asn1Subject},
+		PublicKey:          publicKeyInfo{nil, publicKeyAlgorithm, encodedPublicKey},
+		Extensions:         extensions,
+	}
+
+	tbsCertContents, err := asn1.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignature, err := signTBS(tbsCertContents, altKey, altSignatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	sigBitString, err := asn1.Marshal(asn1.BitString{BitLength: len(altSignature) * 8, Bytes: altSignature})
+	if err != nil {
+		return nil, err
+	}
+
+	for i, ext := range c.Extensions {
+		if ext.Id.Equal(oidExtensionAltSigValue) {
+			c.Extensions = removeAtIndex(c.Extensions, i)
+		}
+	}
+
+	c.Extensions = append(c.Extensions, pkix.Extension{
+		Id:       oidExtensionAltSigValue,
+		Critical: false,
+		Value:    sigBitString,
+	})
+
+	tbsCertContents, err = asn1.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+	c.Raw = tbsCertContents
+
+	signature, err := signTBS(tbsCertContents, key, signatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	return asn1.Marshal(certificate{
+		TBSCertificate:     c,
+		SignatureAlgorithm: algorithmIdentifier,
+		SignatureValue:     asn1.BitString{Bytes: signature, BitLength: len(signature) * 8},
+	})
+}
+
+func removeAtIndex[T any](arr []T, i int) []T {
+	// take the item from the end and move it into this spot
+	arr[i] = arr[len(arr)-1]
+	// remove the item from the end
+	return arr[:len(arr)-1]
+}
 
 // CreateCertificate creates a new X.509 v3 certificate based on a template.
 // The following members of template are currently used:
@@ -2079,6 +2541,12 @@ type CertificateRequest struct {
 	EmailAddresses []string
 	IPAddresses    []net.IP
 	URIs           []*url.URL
+
+	// ---- IOGO ----
+	AlternativeSignatureAlgorithm SignatureAlgorithm
+	AlternativeSignature          []byte             // only used for parsing
+	AlternativePublicKeyAlgorithm PublicKeyAlgorithm // only used for parsing
+	AlternativePublicKey          any                // only used for parsing
 }
 
 // These structures reflect the ASN.1 structure of X.509 certificate
@@ -2177,6 +2645,245 @@ func parseCSRExtensions(rawAttributes []asn1.RawValue) ([]pkix.Extension, error)
 	}
 
 	return ret, nil
+}
+
+// CreateCertificateRequestWithAltSigner creates a new certificate request based on a
+// template. The following members of template are used:
+//
+//   - SignatureAlgorithm
+//   - Subject
+//   - DNSNames
+//   - EmailAddresses
+//   - IPAddresses
+//   - URIs
+//   - ExtraExtensions
+//   - Attributes (deprecated)
+//   - AlternativeSignatureAlgorithm
+//
+// priv is the private key to sign the CSR with, and the corresponding public
+// key will be included in the CSR. It must implement crypto.Signer or
+// crypto.MessageSigner and its Public() method must return a *rsa.PublicKey or
+// a *ecdsa.PublicKey or a ed25519.PublicKey. (A *rsa.PrivateKey,
+// *ecdsa.PrivateKey or ed25519.PrivateKey satisfies this.)
+//
+// The returned slice is the certificate request in DER encoding.
+func CreateCertificateRequestWithAltSigner(rand io.Reader, template *CertificateRequest, priv, altPriv any) (csr []byte, err error) {
+	key, ok := priv.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("x509: certificate private key does not implement crypto.Signer")
+	}
+
+	altKey, ok := altPriv.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("x509: certificate alt private key does not implement crypto.Signer")
+	}
+
+	signatureAlgorithm, algorithmIdentifier, err := signingParamsForKey(key, template.SignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignatureAlgorithm, altAlgorithmIdentifier, err := signingParamsForKey(altKey, template.AlternativeSignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	var publicKeyBytes []byte
+	var publicKeyAlgorithm pkix.AlgorithmIdentifier
+	publicKeyBytes, publicKeyAlgorithm, err = marshalPublicKey(key.Public())
+	if err != nil {
+		return nil, err
+	}
+
+	if !oidInExtensions(oidExtensionSubjectAltPublicKeyInfo, template.ExtraExtensions) {
+		altPublicKeyBytes, err := MarshalPKIXPublicKey(altKey.Public())
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
+			Id:       oidExtensionSubjectAltPublicKeyInfo,
+			Critical: false,
+			Value:    altPublicKeyBytes,
+		})
+	}
+	if !oidInExtensions(oidExtensionAltSigAlgorithm, template.ExtraExtensions) {
+		altAlgoIdent, err := asn1.Marshal(altAlgorithmIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
+			Id:       oidExtensionAltSigAlgorithm,
+			Critical: false,
+			Value:    altAlgoIdent,
+		})
+	}
+
+	extensions, err := buildCSRExtensions(template)
+	if err != nil {
+		return nil, err
+	}
+
+	rawAttributes, err := getRawCSRAttributes(template, extensions)
+	if err != nil {
+		return nil, err
+	}
+
+	asn1Subject := template.RawSubject
+	if len(asn1Subject) == 0 {
+		asn1Subject, err = asn1.Marshal(template.Subject.ToRDNSequence())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tbsCSR := tbsCertificateRequest{
+		Version: 0, // PKCS #10, RFC 2986
+		Subject: asn1.RawValue{FullBytes: asn1Subject},
+		PublicKey: publicKeyInfo{
+			Algorithm: publicKeyAlgorithm,
+			PublicKey: asn1.BitString{
+				Bytes:     publicKeyBytes,
+				BitLength: len(publicKeyBytes) * 8,
+			},
+		},
+		RawAttributes: rawAttributes,
+	}
+
+	tbsCSRContents, err := asn1.Marshal(tbsCSR)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignature, err := signTBS(tbsCSRContents, altKey, altSignatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	sigBitString, err := asn1.Marshal(asn1.BitString{BitLength: len(altSignature) * 8, Bytes: altSignature})
+	if err != nil {
+		return nil, err
+	}
+
+	for i, ext := range extensions {
+		if ext.Id.Equal(oidExtensionAltSigValue) {
+			extensions = removeAtIndex(extensions, i)
+		}
+	}
+
+	extensions = append(extensions, pkix.Extension{
+		Id:       oidExtensionAltSigValue,
+		Critical: false,
+		Value:    sigBitString,
+	})
+
+	rawAttributes, err = getRawCSRAttributes(template, extensions)
+	if err != nil {
+		return nil, err
+	}
+	tbsCSR.RawAttributes = rawAttributes
+
+	tbsCSRContents, err = asn1.Marshal(tbsCSR)
+	if err != nil {
+		return nil, err
+	}
+	tbsCSR.Raw = tbsCSRContents
+
+	signature, err := signTBS(tbsCSRContents, key, signatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	cr := certificateRequest{}
+	cr.TBSCSR = tbsCSR
+	cr.SignatureAlgorithm.Algorithm = algorithmIdentifier.Algorithm
+	cr.SignatureAlgorithm.Parameters = algorithmIdentifier.Parameters
+	cr.SignatureValue = asn1.BitString{Bytes: signature, BitLength: len(signature) * 8}
+	return asn1.Marshal(cr)
+}
+
+func getRawCSRAttributes(template *CertificateRequest, extensions []pkix.Extension) ([]asn1.RawValue, error) {
+	// Make a copy of template.Attributes because we may alter it below.
+	attributes := make([]pkix.AttributeTypeAndValueSET, 0, len(template.Attributes))
+	for _, attr := range template.Attributes {
+		values := make([][]pkix.AttributeTypeAndValue, len(attr.Value))
+		copy(values, attr.Value)
+		attributes = append(attributes, pkix.AttributeTypeAndValueSET{
+			Type:  attr.Type,
+			Value: values,
+		})
+	}
+
+	extensionsAppended := false
+	if len(extensions) > 0 {
+		// Append the extensions to an existing attribute if possible.
+		for _, atvSet := range attributes {
+			if !atvSet.Type.Equal(oidExtensionRequest) || len(atvSet.Value) == 0 {
+				continue
+			}
+
+			// specifiedExtensions contains all the extensions that we
+			// found specified via template.Attributes.
+			specifiedExtensions := make(map[string]bool)
+
+			for _, atvs := range atvSet.Value {
+				for _, atv := range atvs {
+					specifiedExtensions[atv.Type.String()] = true
+				}
+			}
+
+			newValue := make([]pkix.AttributeTypeAndValue, 0, len(atvSet.Value[0])+len(extensions))
+			newValue = append(newValue, atvSet.Value[0]...)
+
+			for _, e := range extensions {
+				if specifiedExtensions[e.Id.String()] {
+					// Attributes already contained a value for
+					// this extension and it takes priority.
+					continue
+				}
+
+				newValue = append(newValue, pkix.AttributeTypeAndValue{
+					// There is no place for the critical
+					// flag in an AttributeTypeAndValue.
+					Type:  e.Id,
+					Value: e.Value,
+				})
+			}
+
+			atvSet.Value[0] = newValue
+			extensionsAppended = true
+			break
+		}
+	}
+
+	rawAttributes, err := newRawAttributes(attributes)
+	if err != nil {
+		return nil, err
+	}
+
+	// If not included in attributes, add a new attribute for the
+	// extensions.
+	if len(extensions) > 0 && !extensionsAppended {
+		attr := struct {
+			Type  asn1.ObjectIdentifier
+			Value [][]pkix.Extension `asn1:"set"`
+		}{
+			Type:  oidExtensionRequest,
+			Value: [][]pkix.Extension{extensions},
+		}
+
+		b, err := asn1.Marshal(attr)
+		if err != nil {
+			return nil, errors.New("x509: failed to serialise extensions attribute: " + err.Error())
+		}
+
+		var rawValue asn1.RawValue
+		if _, err := asn1.Unmarshal(b, &rawValue); err != nil {
+			return nil, err
+		}
+
+		rawAttributes = append(rawAttributes, rawValue)
+	}
+	return rawAttributes, nil
 }
 
 // CreateCertificateRequest creates a new certificate request based on a
@@ -2404,6 +3111,28 @@ func parseCertificateRequest(in *certificateRequest) (*CertificateRequest, error
 			if err != nil {
 				return nil, err
 			}
+		case extension.Id.Equal(oidExtensionSubjectAltPublicKeyInfo):
+			pubKey := &publicKeyInfo{}
+			if _, err = asn1.Unmarshal(extension.Value, pubKey); err != nil {
+				return nil, err
+			}
+			out.AlternativePublicKey, err = parsePublicKey(pubKey)
+			if err != nil {
+				return nil, err
+			}
+			out.AlternativePublicKeyAlgorithm = getPublicKeyAlgorithmFromOID(pubKey.Algorithm.Algorithm)
+		case extension.Id.Equal(oidExtensionAltSigAlgorithm):
+			altAI := &pkix.AlgorithmIdentifier{}
+			if _, err := asn1.Unmarshal(extension.Value, altAI); err != nil {
+				return nil, err
+			}
+			out.AlternativeSignatureAlgorithm = getSignatureAlgorithmFromAI(*altAI)
+		case extension.Id.Equal(oidExtensionAltSigValue):
+			sigBitStr := &asn1.BitString{}
+			if _, err := asn1.Unmarshal(extension.Value, sigBitStr); err != nil {
+				return nil, err
+			}
+			out.AlternativeSignature = sigBitStr.Bytes
 		}
 	}
 
@@ -2413,6 +3142,61 @@ func parseCertificateRequest(in *certificateRequest) (*CertificateRequest, error
 // CheckSignature reports whether the signature on c is valid.
 func (c *CertificateRequest) CheckSignature() error {
 	return checkSignature(c.SignatureAlgorithm, c.RawTBSCertificateRequest, c.Signature, c.PublicKey, true)
+}
+
+func (c *CertificateRequest) CheckAltSignature() error {
+	if c.AlternativeSignatureAlgorithm != UnknownSignatureAlgorithm && c.AlternativeSignature != nil && len(c.AlternativeSignature) > 0 {
+		// remove the sig value since it was not a part of signing
+		tbs, err := RemoveAltSigFromCSRTBS(c.RawTBSCertificateRequest)
+		if err != nil {
+			return err
+		}
+		return checkAltSignature(c.Extensions, c.AlternativeSignatureAlgorithm, tbs, c.AlternativeSignature)
+	}
+	return errors.New("x509: no alt signature found")
+}
+
+func RemoveAltSigFromCSRTBS(tbs []byte) ([]byte, error) {
+	tbsStruct := &tbsCertificateRequest{}
+	_, err := asn1.Unmarshal(tbs, tbsStruct)
+	if err != nil {
+		return nil, err
+	}
+	extensionsAttr := &pkix.AttributeTypeAndValueSET{}
+	var extensionAttrIndex int
+	for e, v := range tbsStruct.RawAttributes {
+		_, err := asn1.Unmarshal(v.FullBytes, extensionsAttr)
+		if err == nil {
+			extensionAttrIndex = e
+			break
+		}
+	}
+
+	for i, v := range extensionsAttr.Value {
+		var attrs []pkix.AttributeTypeAndValue
+		for _, u := range v {
+			if !u.Type.Equal(oidExtensionAltSigValue) {
+				attrs = append(attrs, u)
+			}
+		}
+		extensionsAttr.Value[i] = attrs
+	}
+	data, err := asn1.Marshal(*extensionsAttr)
+	if err != nil {
+		return nil, err
+	}
+	var rawValue asn1.RawValue
+	if _, err := asn1.Unmarshal(data, &rawValue); err != nil {
+		return nil, err
+	}
+	tbsStruct.RawAttributes[extensionAttrIndex] = rawValue
+	tbsCopy := tbsCertificateRequest{
+		Version:       tbsStruct.Version,
+		Subject:       tbsStruct.Subject,
+		PublicKey:     tbsStruct.PublicKey,
+		RawAttributes: tbsStruct.RawAttributes,
+	}
+	return asn1.Marshal(tbsCopy)
 }
 
 // RevocationListEntry represents an entry in the revokedCertificates
@@ -2515,6 +3299,10 @@ type RevocationList struct {
 	// ExtraExtensions contains any additional extensions to add directly to
 	// the CRL.
 	ExtraExtensions []pkix.Extension
+
+	// ---- IOGO -----
+	AlternativeSignatureAlgorithm SignatureAlgorithm
+	AlternativeSignature          []byte // only used while parsing
 }
 
 // These structures reflect the ASN.1 structure of X.509 CRLs better than
@@ -2701,6 +3489,210 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *Cert
 	})
 }
 
+// CreateRevocationListWithAltSigner creates a new X.509 v2 [Certificate] Revocation List,
+// according to RFC 5280, based on template.
+//
+// The CRL is signed by priv which should be a crypto.Signer or
+// crypto.MessageSigner associated with the public key in the issuer
+// certificate.
+//
+// The issuer may not be nil, and the crlSign bit must be set in [KeyUsage] in
+// order to use it as a CRL issuer.
+//
+// The issuer distinguished name CRL field and authority key identifier
+// extension are populated using the issuer certificate. issuer must have
+// SubjectKeyId set.
+func CreateRevocationListWithAltSigner(rand io.Reader, template *RevocationList, issuer *Certificate, priv, altPriv crypto.Signer) ([]byte, error) {
+	if template == nil {
+		return nil, errors.New("x509: template can not be nil")
+	}
+	if issuer == nil {
+		return nil, errors.New("x509: issuer can not be nil")
+	}
+	if (issuer.KeyUsage & KeyUsageCRLSign) == 0 {
+		return nil, errors.New("x509: issuer must have the crlSign key usage bit set")
+	}
+	if len(issuer.SubjectKeyId) == 0 {
+		return nil, errors.New("x509: issuer certificate doesn't contain a subject key identifier")
+	}
+	if template.NextUpdate.Before(template.ThisUpdate) {
+		return nil, errors.New("x509: template.ThisUpdate is after template.NextUpdate")
+	}
+	if template.Number == nil {
+		return nil, errors.New("x509: template contains nil Number field")
+	}
+
+	signatureAlgorithm, algorithmIdentifier, err := signingParamsForKey(priv, template.SignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignatureAlgorithm, altAlgorithmIdentifier, err := signingParamsForKey(altPriv, template.AlternativeSignatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	if !oidInExtensions(oidExtensionAltSigAlgorithm, template.ExtraExtensions) {
+		altAlgoIdent, err := asn1.Marshal(altAlgorithmIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
+			Id:       oidExtensionAltSigAlgorithm,
+			Critical: false,
+			Value:    altAlgoIdent,
+		})
+	}
+
+	var revokedCerts []pkix.RevokedCertificate
+	// Only process the deprecated RevokedCertificates field if it is populated
+	// and the new RevokedCertificateEntries field is not populated.
+	if len(template.RevokedCertificates) > 0 && len(template.RevokedCertificateEntries) == 0 {
+		// Force revocation times to UTC per RFC 5280.
+		revokedCerts = make([]pkix.RevokedCertificate, len(template.RevokedCertificates))
+		for i, rc := range template.RevokedCertificates {
+			rc.RevocationTime = rc.RevocationTime.UTC()
+			revokedCerts[i] = rc
+		}
+	} else {
+		// Convert the ReasonCode field to a proper extension, and force revocation
+		// times to UTC per RFC 5280.
+		revokedCerts = make([]pkix.RevokedCertificate, len(template.RevokedCertificateEntries))
+		for i, rce := range template.RevokedCertificateEntries {
+			if rce.SerialNumber == nil {
+				return nil, errors.New("x509: template contains entry with nil SerialNumber field")
+			}
+			if rce.RevocationTime.IsZero() {
+				return nil, errors.New("x509: template contains entry with zero RevocationTime field")
+			}
+
+			rc := pkix.RevokedCertificate{
+				SerialNumber:   rce.SerialNumber,
+				RevocationTime: rce.RevocationTime.UTC(),
+			}
+
+			// Copy over any extra extensions, except for a Reason Code extension,
+			// because we'll synthesize that ourselves to ensure it is correct.
+			exts := make([]pkix.Extension, 0, len(rce.ExtraExtensions))
+			for _, ext := range rce.ExtraExtensions {
+				if ext.Id.Equal(oidExtensionReasonCode) {
+					return nil, errors.New("x509: template contains entry with ReasonCode ExtraExtension; use ReasonCode field instead")
+				}
+				exts = append(exts, ext)
+			}
+
+			// Only add a reasonCode extension if the reason is non-zero, as per
+			// RFC 5280 Section 5.3.1.
+			if rce.ReasonCode != 0 {
+				reasonBytes, err := asn1.Marshal(asn1.Enumerated(rce.ReasonCode))
+				if err != nil {
+					return nil, err
+				}
+
+				exts = append(exts, pkix.Extension{
+					Id:    oidExtensionReasonCode,
+					Value: reasonBytes,
+				})
+			}
+
+			if len(exts) > 0 {
+				rc.Extensions = exts
+			}
+			revokedCerts[i] = rc
+		}
+	}
+
+	aki, err := asn1.Marshal(authKeyId{Id: issuer.SubjectKeyId})
+	if err != nil {
+		return nil, err
+	}
+
+	if numBytes := template.Number.Bytes(); len(numBytes) > 20 || (len(numBytes) == 20 && numBytes[0]&0x80 != 0) {
+		return nil, errors.New("x509: CRL number exceeds 20 octets")
+	}
+	crlNum, err := asn1.Marshal(template.Number)
+	if err != nil {
+		return nil, err
+	}
+
+	// Correctly use the issuer's subject sequence if one is specified.
+	issuerSubject, err := subjectBytes(issuer)
+	if err != nil {
+		return nil, err
+	}
+
+	tbsCertList := tbsCertificateList{
+		Version:    1, // v2
+		Signature:  algorithmIdentifier,
+		Issuer:     asn1.RawValue{FullBytes: issuerSubject},
+		ThisUpdate: template.ThisUpdate.UTC(),
+		NextUpdate: template.NextUpdate.UTC(),
+		Extensions: []pkix.Extension{
+			{
+				Id:    oidExtensionAuthorityKeyId,
+				Value: aki,
+			},
+			{
+				Id:    oidExtensionCRLNumber,
+				Value: crlNum,
+			},
+		},
+	}
+	if len(revokedCerts) > 0 {
+		tbsCertList.RevokedCertificates = revokedCerts
+	}
+
+	if len(template.ExtraExtensions) > 0 {
+		tbsCertList.Extensions = append(tbsCertList.Extensions, template.ExtraExtensions...)
+	}
+
+	tbsCertListContents, err := asn1.Marshal(tbsCertList)
+	if err != nil {
+		return nil, err
+	}
+
+	altSignature, err := signTBS(tbsCertListContents, altPriv, altSignatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	sigBitString, err := asn1.Marshal(asn1.BitString{BitLength: len(altSignature) * 8, Bytes: altSignature})
+	if err != nil {
+		return nil, err
+	}
+
+	for i, ext := range tbsCertList.Extensions {
+		if ext.Id.Equal(oidExtensionAltSigValue) {
+			tbsCertList.Extensions = removeAtIndex(tbsCertList.Extensions, i)
+		}
+	}
+
+	tbsCertList.Extensions = append(tbsCertList.Extensions, pkix.Extension{
+		Id:       oidExtensionAltSigValue,
+		Critical: false,
+		Value:    sigBitString,
+	})
+
+	tbsCertListContents, err = asn1.Marshal(tbsCertList)
+	if err != nil {
+		return nil, err
+	}
+	// Optimization to only marshal this struct once, when signing and
+	// then embedding in certificateList below.
+	tbsCertList.Raw = tbsCertListContents
+
+	signature, err := signTBS(tbsCertListContents, priv, signatureAlgorithm, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	return asn1.Marshal(certificateList{
+		TBSCertList:        tbsCertList,
+		SignatureAlgorithm: algorithmIdentifier,
+		SignatureValue:     asn1.BitString{Bytes: signature, BitLength: len(signature) * 8},
+	})
+}
+
 // CheckSignatureFrom verifies that the signature on rl is a valid signature
 // from issuer.
 func (rl *RevocationList) CheckSignatureFrom(parent *Certificate) error {
@@ -2718,4 +3710,54 @@ func (rl *RevocationList) CheckSignatureFrom(parent *Certificate) error {
 	}
 
 	return parent.CheckSignature(rl.SignatureAlgorithm, rl.RawTBSRevocationList, rl.Signature)
+}
+
+func (rl *RevocationList) CheckAltSignatureFrom(parent *Certificate) error {
+	if parent.Version == 3 && !parent.BasicConstraintsValid ||
+		parent.BasicConstraintsValid && !parent.IsCA {
+		return ConstraintViolationError{}
+	}
+
+	if parent.KeyUsage != 0 && parent.KeyUsage&KeyUsageCRLSign == 0 {
+		return ConstraintViolationError{}
+	}
+
+	if parent.PublicKeyAlgorithm == UnknownPublicKeyAlgorithm {
+		return ErrUnsupportedAlgorithm
+	}
+
+	tbs, err := RemoveAltSigFromCRLTBS(rl.RawTBSRevocationList)
+	if err != nil {
+		return err
+	}
+
+	return parent.CheckAltSignature(rl.AlternativeSignatureAlgorithm, tbs, rl.AlternativeSignature)
+}
+
+func RemoveAltSigFromCRLTBS(tbs []byte) ([]byte, error) {
+	tbsStruct := &tbsCertificateList{}
+	_, err := asn1.Unmarshal(tbs, tbsStruct)
+	if err != nil {
+		return nil, err
+	}
+
+	var extensions []pkix.Extension
+	for i, ext := range tbsStruct.Extensions {
+		if ext.Id.Equal(oidExtensionAltSigValue) {
+			extensions = removeAtIndex(tbsStruct.Extensions, i)
+		} else {
+			extensions = append(extensions, ext)
+		}
+	}
+
+	tbsCopy := tbsCertificateList{
+		Version:             tbsStruct.Version,
+		Signature:           tbsStruct.Signature,
+		Issuer:              tbsStruct.Issuer,
+		ThisUpdate:          tbsStruct.ThisUpdate,
+		NextUpdate:          tbsStruct.NextUpdate,
+		RevokedCertificates: tbsStruct.RevokedCertificates,
+		Extensions:          extensions,
+	}
+	return asn1.Marshal(tbsCopy)
 }
