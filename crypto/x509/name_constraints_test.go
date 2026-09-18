@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	"internal/testenv"
 	"math/big"
 	"net"
 	"net/url"
@@ -2330,8 +2329,8 @@ func testChainAgainstOpenSSL(t *testing.T, leaf *Certificate, intermediates, roo
 		defer os.Remove(leafFile.Name())
 	}
 	args = append(args, leafFile.Name())
+	cmd := exec.CommandContext(t.Context(), "openssl", args...)
 
-	cmd := testenv.Command(t, "openssl", args...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

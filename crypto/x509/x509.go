@@ -20,6 +20,10 @@
 // systems.
 package x509
 
+/**
+ * IOGO: removed usage of godebug flags: x509usepolicies, x509sha256skid
+ */
+
 import (
 	"bytes"
 	"crypto"
@@ -30,14 +34,12 @@ import (
 	"crypto/fips140"
 	"crypto/mldsa"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"internal/godebug"
 	"io"
 	"math/big"
 	"net"
@@ -51,6 +53,10 @@ import (
 	_ "crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
+
+	iogoRsa "github.com/otpki/iogo/crypto/rsa"
+
+	iogoCrypto "github.com/otpki/iogo/crypto"
 
 	circlEcc "github.com/cloudflare/circl/ecc"
 	circlPki "github.com/cloudflare/circl/pki"
@@ -309,6 +315,46 @@ func (algo SignatureAlgorithm) hashFunc() crypto.Hash {
 	return crypto.Hash(0)
 }
 
+func (algo SignatureAlgorithm) GetHashFunc() crypto.Hash {
+	return algo.hashFunc()
+}
+
+func (algo SignatureAlgorithm) IsExtended() bool {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return details.isIOGO
+		}
+	}
+	return false
+}
+
+func (algo SignatureAlgorithm) GetSign() signFunc {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return details.sign
+		}
+	}
+	return noOpSigner
+}
+
+func (algo SignatureAlgorithm) getVerify() verifyFunc {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return details.verify
+		}
+	}
+	return noOpVerifier
+}
+
+func (algo SignatureAlgorithm) GetIogoHash() iogoCrypto.Hash {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return details.iogoHash
+		}
+	}
+	return iogoCrypto.Hash(0)
+}
+
 func (algo SignatureAlgorithm) String() string {
 	for _, details := range signatureAlgorithmDetails {
 		if details.algo == algo {
@@ -316,6 +362,10 @@ func (algo SignatureAlgorithm) String() string {
 		}
 	}
 	return strconv.Itoa(int(algo))
+}
+
+func LookupHashFunc(algo SignatureAlgorithm) iogoCrypto.Hash {
+	return algo.GetIogoHash()
 }
 
 type PublicKeyAlgorithm int
@@ -470,6 +520,16 @@ var (
 	oidISOSignatureSHA1WithRSA = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 29}
 )
 
+type signFunc func(signer crypto.Signer, rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error)
+type verifyFunc func(pub crypto.PublicKey, message []byte, signature []byte, opts any) error
+
+var noOpSigner = func(signer crypto.Signer, rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+var noOpVerifier = func(pub crypto.PublicKey, message []byte, signature []byte, opts any) error {
+	return fmt.Errorf("unimplemented")
+}
+
 var signatureAlgorithmDetails = []struct {
 	algo       SignatureAlgorithm
 	name       string
@@ -478,36 +538,151 @@ var signatureAlgorithmDetails = []struct {
 	pubKeyAlgo PublicKeyAlgorithm
 	hash       crypto.Hash
 	isRSAPSS   bool
+	// IOGO extensions
+	isIOGO   bool
+	iogoHash iogoCrypto.Hash
+	sign     signFunc
+	verify   verifyFunc
 }{
-	{MD5WithRSA, "MD5-RSA", oidSignatureMD5WithRSA, asn1.NullRawValue, RSA, crypto.MD5, false},
-	{SHA1WithRSA, "SHA1-RSA", oidSignatureSHA1WithRSA, asn1.NullRawValue, RSA, crypto.SHA1, false},
-	{SHA1WithRSA, "SHA1-RSA", oidISOSignatureSHA1WithRSA, asn1.NullRawValue, RSA, crypto.SHA1, false},
-	{SHA256WithRSA, "SHA256-RSA", oidSignatureSHA256WithRSA, asn1.NullRawValue, RSA, crypto.SHA256, false},
-	{SHA384WithRSA, "SHA384-RSA", oidSignatureSHA384WithRSA, asn1.NullRawValue, RSA, crypto.SHA384, false},
-	{SHA512WithRSA, "SHA512-RSA", oidSignatureSHA512WithRSA, asn1.NullRawValue, RSA, crypto.SHA512, false},
-	{SHA256WithRSAPSS, "SHA256-RSAPSS", oidSignatureRSAPSS, pssParametersSHA256, RSA, crypto.SHA256, true},
-	{SHA384WithRSAPSS, "SHA384-RSAPSS", oidSignatureRSAPSS, pssParametersSHA384, RSA, crypto.SHA384, true},
-	{SHA512WithRSAPSS, "SHA512-RSAPSS", oidSignatureRSAPSS, pssParametersSHA512, RSA, crypto.SHA512, true},
-	{DSAWithSHA1, "DSA-SHA1", oidSignatureDSAWithSHA1, emptyRawValue, DSA, crypto.SHA1, false},
-	{DSAWithSHA256, "DSA-SHA256", oidSignatureDSAWithSHA256, emptyRawValue, DSA, crypto.SHA256, false},
-	{ECDSAWithSHA1, "ECDSA-SHA1", oidSignatureECDSAWithSHA1, emptyRawValue, ECDSA, crypto.SHA1, false},
-	{ECDSAWithSHA256, "ECDSA-SHA256", oidSignatureECDSAWithSHA256, emptyRawValue, ECDSA, crypto.SHA256, false},
-	{ECDSAWithSHA384, "ECDSA-SHA384", oidSignatureECDSAWithSHA384, emptyRawValue, ECDSA, crypto.SHA384, false},
-	{ECDSAWithSHA512, "ECDSA-SHA512", oidSignatureECDSAWithSHA512, emptyRawValue, ECDSA, crypto.SHA512, false},
-	{PureEd25519, "Ed25519", oidSignatureEd25519, emptyRawValue, Ed25519, crypto.Hash(0) /* no pre-hashing */, false},
-	{MLDSA44, "ML-DSA-44", oidPublicKeyMLDSA44, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
-	{MLDSA65, "ML-DSA-65", oidPublicKeyMLDSA65, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
-	{MLDSA87, "ML-DSA-87", oidPublicKeyMLDSA87, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false},
-	{ECDSAWithSHAKE128, "ECDSA-SHAKE128", oidSignatureECDSAWithSHAKE128, emptyRawValue, ECDSA, crypto.SHAKE128, false},
-	{ECDSAWithSHAKE256, "ECDSA-SHAKE256", oidSignatureECDSAWithSHAKE256, emptyRawValue, ECDSA, crypto.SHAKE256, false},
-	{ECDSAWithSHA3256, "ECDSA-SHA3-256", oidSignatureECDSAWithSHA3256, emptyRawValue, ECDSA, crypto.SHA3_256, false},
-	{ECDSAWithSHA3384, "ECDSA-SHA3-384", oidSignatureECDSAWithSHA3384, emptyRawValue, ECDSA, crypto.SHA3_384, false},
-	{ECDSAWithSHA3512, "ECDSA-SHA3-512", oidSignatureECDSAWithSHA3512, emptyRawValue, ECDSA, crypto.SHA3_512, false},
-	{SHAKE128WithRSAPSS, "RSASSA-PSS-SHAKE128", oidSignatureRSAPSSSHAKE128, pssParametersSHAKE128, RSA, crypto.SHAKE128, true},
-	{SHAKE256WithRSAPSS, "RSASSA-PSS-SHAKE256", oidSignatureRSAPSSSHAKE256, pssParametersSHAKE256, RSA, crypto.SHAKE256, true},
-	{SHA3256WithRSA, "SHA3-256-RSA", oidSignatureRSAWithSHA3256, emptyRawValue, RSA, crypto.SHA3_256, false},
-	{SHA3384WithRSA, "SHA3-384-RSA", oidSignatureRSAWithSHA3384, emptyRawValue, RSA, crypto.SHA3_384, false},
-	{SHA3512WithRSA, "SHA3-512-RSA", oidSignatureRSAWithSHA3512, emptyRawValue, RSA, crypto.SHA3_512, false},
+	{MD5WithRSA, "MD5-RSA", oidSignatureMD5WithRSA, asn1.NullRawValue, RSA, crypto.MD5, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA1WithRSA, "SHA1-RSA", oidSignatureSHA1WithRSA, asn1.NullRawValue, RSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA1WithRSA, "SHA1-RSA", oidISOSignatureSHA1WithRSA, asn1.NullRawValue, RSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA256WithRSA, "SHA256-RSA", oidSignatureSHA256WithRSA, asn1.NullRawValue, RSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA384WithRSA, "SHA384-RSA", oidSignatureSHA384WithRSA, asn1.NullRawValue, RSA, crypto.SHA384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA512WithRSA, "SHA512-RSA", oidSignatureSHA512WithRSA, asn1.NullRawValue, RSA, crypto.SHA512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA256WithRSAPSS, "SHA256-RSAPSS", oidSignatureRSAPSS, pssParametersSHA256, RSA, crypto.SHA256, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA384WithRSAPSS, "SHA384-RSAPSS", oidSignatureRSAPSS, pssParametersSHA384, RSA, crypto.SHA384, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA512WithRSAPSS, "SHA512-RSAPSS", oidSignatureRSAPSS, pssParametersSHA512, RSA, crypto.SHA512, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{DSAWithSHA1, "DSA-SHA1", oidSignatureDSAWithSHA1, emptyRawValue, DSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{DSAWithSHA256, "DSA-SHA256", oidSignatureDSAWithSHA256, emptyRawValue, DSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA1, "ECDSA-SHA1", oidSignatureECDSAWithSHA1, emptyRawValue, ECDSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA256, "ECDSA-SHA256", oidSignatureECDSAWithSHA256, emptyRawValue, ECDSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA384, "ECDSA-SHA384", oidSignatureECDSAWithSHA384, emptyRawValue, ECDSA, crypto.SHA384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA512, "ECDSA-SHA512", oidSignatureECDSAWithSHA512, emptyRawValue, ECDSA, crypto.SHA512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{PureEd25519, "Ed25519", oidSignatureEd25519, emptyRawValue, Ed25519, crypto.Hash(0) /* no pre-hashing */, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{MLDSA44, "ML-DSA-44", oidPublicKeyMLDSA44, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{MLDSA65, "ML-DSA-65", oidPublicKeyMLDSA65, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{MLDSA87, "ML-DSA-87", oidPublicKeyMLDSA87, emptyRawValue, MLDSA, crypto.Hash(0) /* no pre-hashing */, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+
+	{ECDSAWithSHA3256, "ECDSA-SHA3-256", oidSignatureECDSAWithSHA3256, emptyRawValue, ECDSA, crypto.SHA3_256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA3384, "ECDSA-SHA3-384", oidSignatureECDSAWithSHA3384, emptyRawValue, ECDSA, crypto.SHA3_384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA3512, "ECDSA-SHA3-512", oidSignatureECDSAWithSHA3512, emptyRawValue, ECDSA, crypto.SHA3_512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+
+	{SHA3256WithRSA, "SHA3-256-RSA", oidSignatureRSAWithSHA3256, emptyRawValue, RSA, crypto.SHA3_256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA3384WithRSA, "SHA3-384-RSA", oidSignatureRSAWithSHA3384, emptyRawValue, RSA, crypto.SHA3_384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA3512WithRSA, "SHA3-512-RSA", oidSignatureRSAWithSHA3512, emptyRawValue, RSA, crypto.SHA3_512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+
+	{SHAKE128WithRSAPSS, "RSASSA-PSS-SHAKE128", oidSignatureRSAPSSSHAKE128, pssParametersSHAKE128, RSA, crypto.Hash(0), true, true, iogoCrypto.SHAKE128,
+		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
+			if err != nil {
+				return nil, err
+			}
+			saltLength := 0
+			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+				saltLength = pssOpts.SaltLength
+			}
+			if pk, ok := signer.(*rsa.PrivateKey); ok {
+				return iogoRsa.SignPSS(rand, pk, hashed, iogoCrypto.SHAKE128.New, saltLength)
+			}
+			return nil, fmt.Errorf("expected rsa private key, got %T", signer)
+		},
+		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, message)
+			if err != nil {
+				return err
+			}
+			saltLength := 0
+			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+				saltLength = pssOpts.SaltLength
+			}
+			if pk, ok := pub.(*rsa.PublicKey); ok {
+				return iogoRsa.VerifyPSS(pk, hashed, signature, iogoCrypto.SHAKE128.New, saltLength)
+			}
+			return fmt.Errorf("expected *rsa.PublicKey, got %T", pub)
+		},
+	},
+	{SHAKE256WithRSAPSS, "RSASSA-PSS-SHAKE256", oidSignatureRSAPSSSHAKE256, pssParametersSHAKE256, RSA, crypto.Hash(0), true, true, iogoCrypto.SHAKE256,
+		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
+			if err != nil {
+				return nil, err
+			}
+			saltLength := 0
+			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+				saltLength = pssOpts.SaltLength
+			}
+			if pk, ok := signer.(*rsa.PrivateKey); ok {
+				return iogoRsa.SignPSS(rand, pk, hashed, iogoCrypto.SHAKE256.New, saltLength)
+			}
+			return nil, fmt.Errorf("expected rsa private key, got %T", signer)
+		},
+		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, message)
+			if err != nil {
+				return err
+			}
+			saltLength := 0
+			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+				saltLength = pssOpts.SaltLength
+			}
+			if pk, ok := pub.(*rsa.PublicKey); ok {
+				return iogoRsa.VerifyPSS(pk, hashed, signature, iogoCrypto.SHAKE256.New, saltLength)
+			}
+			return fmt.Errorf("expected *rsa.PublicKey, got %T", pub)
+		},
+	},
+
+	{ECDSAWithSHAKE128, "ECDSA-SHAKE128", oidSignatureECDSAWithSHAKE128, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE128,
+		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
+			if err != nil {
+				return nil, err
+			}
+			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
+				return ecdsa.SignASN1(rand, pk, hashed)
+			}
+			return nil, fmt.Errorf("expected ecdsa private key, got %T", signer)
+		},
+		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, message)
+			if err != nil {
+				return err
+			}
+			if pk, ok := pub.(*ecdsa.PublicKey); ok {
+				if !ecdsa.VerifyASN1(pk, hashed, signature) {
+					return fmt.Errorf("ecdsa signature verification failed")
+				}
+				return nil
+			}
+			return fmt.Errorf("expected *ecdsa.PublicKey, got %T", pub)
+		},
+	},
+	{ECDSAWithSHAKE256, "ECDSA-SHAKE256", oidSignatureECDSAWithSHAKE256, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE256,
+		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
+			if err != nil {
+				return nil, err
+			}
+			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
+				return ecdsa.SignASN1(rand, pk, hashed)
+			}
+			return nil, fmt.Errorf("expected ecdsa private key, got %T", signer)
+		},
+		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, message)
+			if err != nil {
+				return err
+			}
+			if pk, ok := pub.(*ecdsa.PublicKey); ok {
+				if !ecdsa.VerifyASN1(pk, hashed, signature) {
+					return fmt.Errorf("ecdsa signature verification failed")
+				}
+				return nil
+			}
+			return fmt.Errorf("expected *ecdsa.PublicKey, got %T", pub)
+		},
+	},
 }
 
 var emptyRawValue = asn1.RawValue{}
@@ -1217,6 +1392,9 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 
 	for _, details := range signatureAlgorithmDetails {
 		if details.algo == algo {
+			if algo.IsExtended() {
+				return algo.getVerify()(publicKey, signed, signature, nil)
+			}
 			hashType = details.hash
 			pubKeyAlgo = details.pubKeyAlgo
 			break
@@ -1469,8 +1647,6 @@ func isIA5String(s string) error {
 	return nil
 }
 
-var x509usepolicies = godebug.New("x509usepolicies")
-
 func buildCertExtensions(template *Certificate, subjectIsEmpty bool, authorityKeyId []byte, subjectKeyId []byte) (ret []pkix.Extension, err error) {
 	ret = make([]pkix.Extension, 10 /* maximum number of elements. */)
 	n := 0
@@ -1556,7 +1732,7 @@ func buildCertExtensions(template *Certificate, subjectIsEmpty bool, authorityKe
 		n++
 	}
 
-	usePolicies := x509usepolicies.Value() != "0"
+	usePolicies := true
 	if ((!usePolicies && len(template.PolicyIdentifiers) > 0) || (usePolicies && len(template.Policies) > 0)) &&
 		!oidInExtensions(oidExtensionCertificatePolicies, template.ExtraExtensions) {
 		ret[n], err = marshalCertificatePolicies(template.Policies, template.PolicyIdentifiers)
@@ -1758,25 +1934,16 @@ func marshalCertificatePolicies(policies []OID, policyIdentifiers []asn1.ObjectI
 
 	b := cryptobyte.NewBuilder(make([]byte, 0, 128))
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(child *cryptobyte.Builder) {
-		if x509usepolicies.Value() != "0" {
-			x509usepolicies.IncNonDefault()
-			for _, v := range policies {
-				child.AddASN1(cryptobyte_asn1.SEQUENCE, func(child *cryptobyte.Builder) {
-					child.AddASN1(cryptobyte_asn1.OBJECT_IDENTIFIER, func(child *cryptobyte.Builder) {
-						if len(v.der) == 0 {
-							child.SetError(errors.New("invalid policy object identifier"))
-							return
-						}
-						child.AddBytes(v.der)
-					})
+		for _, v := range policies {
+			child.AddASN1(cryptobyte_asn1.SEQUENCE, func(child *cryptobyte.Builder) {
+				child.AddASN1(cryptobyte_asn1.OBJECT_IDENTIFIER, func(child *cryptobyte.Builder) {
+					if len(v.der) == 0 {
+						child.SetError(errors.New("invalid policy object identifier"))
+						return
+					}
+					child.AddBytes(v.der)
 				})
-			}
-		} else {
-			for _, v := range policyIdentifiers {
-				child.AddASN1(cryptobyte_asn1.SEQUENCE, func(child *cryptobyte.Builder) {
-					child.AddASN1ObjectIdentifier(v)
-				})
-			}
+			})
 		}
 	})
 
@@ -1905,6 +2072,9 @@ func signingParamsForKey(key crypto.Signer, sigAlgo SignatureAlgorithm) (Signatu
 }
 
 func signTBS(tbs []byte, key crypto.Signer, sigAlg SignatureAlgorithm, rand io.Reader) ([]byte, error) {
+	if sigAlg.IsExtended() {
+		return sigAlg.GetSign()(key, rand, tbs, nil)
+	}
 	hashFunc := sigAlg.hashFunc()
 
 	var signerOpts crypto.SignerOpts = hashFunc
@@ -2078,22 +2248,12 @@ func CreateCertificateWithAltSigner(rand io.Reader, template, parent *Certificat
 
 	subjectKeyId := template.SubjectKeyId
 	if len(subjectKeyId) == 0 && template.IsCA {
-		if x509sha256skid.Value() == "0" {
-			x509sha256skid.IncNonDefault()
-			// SubjectKeyId generated using method 1 in RFC 5280, Section 4.2.1.2:
-			//   (1) The keyIdentifier is composed of the 160-bit SHA-1 hash of the
-			//   value of the BIT STRING subjectPublicKey (excluding the tag,
-			//   length, and number of unused bits).
-			h := sha1.Sum(publicKeyBytes)
-			subjectKeyId = h[:]
-		} else {
-			// SubjectKeyId generated using method 1 in RFC 7093, Section 2:
-			//    1) The keyIdentifier is composed of the leftmost 160-bits of the
-			//    SHA-256 hash of the value of the BIT STRING subjectPublicKey
-			//    (excluding the tag, length, and number of unused bits).
-			h := sha256.Sum256(publicKeyBytes)
-			subjectKeyId = h[:20]
-		}
+		// SubjectKeyId generated using method 1 in RFC 7093, Section 2:
+		//    1) The keyIdentifier is composed of the leftmost 160-bits of the
+		//    SHA-256 hash of the value of the BIT STRING subjectPublicKey
+		//    (excluding the tag, length, and number of unused bits).
+		h := sha256.Sum256(publicKeyBytes)
+		subjectKeyId = h[:20]
 	}
 
 	// Check that the signer's public key matches the private key, if available.
@@ -2336,22 +2496,13 @@ func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv 
 
 	subjectKeyId := template.SubjectKeyId
 	if len(subjectKeyId) == 0 && template.IsCA {
-		if x509sha256skid.Value() == "0" {
-			x509sha256skid.IncNonDefault()
-			// SubjectKeyId generated using method 1 in RFC 5280, Section 4.2.1.2:
-			//   (1) The keyIdentifier is composed of the 160-bit SHA-1 hash of the
-			//   value of the BIT STRING subjectPublicKey (excluding the tag,
-			//   length, and number of unused bits).
-			h := sha1.Sum(publicKeyBytes)
-			subjectKeyId = h[:]
-		} else {
-			// SubjectKeyId generated using method 1 in RFC 7093, Section 2:
-			//    1) The keyIdentifier is composed of the leftmost 160-bits of the
-			//    SHA-256 hash of the value of the BIT STRING subjectPublicKey
-			//    (excluding the tag, length, and number of unused bits).
-			h := sha256.Sum256(publicKeyBytes)
-			subjectKeyId = h[:20]
-		}
+		// SubjectKeyId generated using method 1 in RFC 7093, Section 2:
+		//    1) The keyIdentifier is composed of the leftmost 160-bits of the
+		//    SHA-256 hash of the value of the BIT STRING subjectPublicKey
+		//    (excluding the tag, length, and number of unused bits).
+		h := sha256.Sum256(publicKeyBytes)
+		subjectKeyId = h[:20]
+
 	}
 
 	// Check that the signer's public key matches the private key, if available.
@@ -2398,8 +2549,6 @@ func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv 
 		SignatureValue:     asn1.BitString{Bytes: signature, BitLength: len(signature) * 8},
 	})
 }
-
-var x509sha256skid = godebug.New("x509sha256skid")
 
 // pemCRLPrefix is the magic string that indicates that we have a PEM encoded
 // CRL.

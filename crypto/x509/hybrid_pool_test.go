@@ -11,20 +11,18 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"internal/testenv"
 	"math/big"
 	"runtime"
 	"testing"
 	"time"
+
+	_ "github.com/otpki/iogo/crypto"
 )
 
 func TestHybridPool(t *testing.T) {
 	t.Parallel()
 	if !(runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "ios") {
 		t.Skipf("platform verifier not available on %s", runtime.GOOS)
-	}
-	if !testenv.HasExternalNetwork() {
-		t.Skip()
 	}
 	if runtime.GOOS == "windows" {
 		// NOTE(#51599): on the Windows builders we sometimes see that the state

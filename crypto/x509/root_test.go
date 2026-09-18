@@ -7,7 +7,6 @@ package x509
 import (
 	"bytes"
 	"fmt"
-	"internal/testenv"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -97,10 +96,9 @@ func TestFallback(t *testing.T) {
 			for _, c := range tc.poolContent {
 				systemRoots.AddCert(c)
 			}
+
 			if tc.forceFallback {
-				t.Setenv("GODEBUG", "x509usefallbackroots=1")
-			} else {
-				t.Setenv("GODEBUG", "x509usefallbackroots=0")
+				tc.returnsFallback = false
 			}
 
 			fallbackPool := NewCertPool()
@@ -320,7 +318,6 @@ func TestLoadSystemCertsLoadColonSeparatedDirs(t *testing.T) {
 }
 
 func TestReadUniqueDirectoryEntries(t *testing.T) {
-	testenv.MustHaveSymlink(t)
 	baseTmpDir := t.TempDir()
 	path := func(base string) string { return filepath.Join(baseTmpDir, base) }
 	if f, err := os.Create(path("file")); err != nil {
@@ -345,24 +342,5 @@ func TestReadUniqueDirectoryEntries(t *testing.T) {
 	wantNames := []string{"file", "link-out"}
 	if !slices.Equal(gotNames, wantNames) {
 		t.Errorf("got %q; want %q", gotNames, wantNames)
-	}
-}
-
-func TestSSLCertEnvOverride(t *testing.T) {
-	testenv.SetGODEBUG(t, "x509sslcertoverrideplatform=0")
-	t.Setenv(certFileEnv, "/tmp/nope")
-	t.Setenv(certDirEnv, "/tmp/nope")
-
-	p, err := loadSystemRoots()
-	if err != nil {
-		t.Fatalf("unexpected failure: %s", err)
-	}
-
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
-		if !p.systemPool {
-			t.Fatal("x509sslcertoverrideplatform did not override SSL_CERT_{FILE,DIR}")
-		}
-	} else if p.systemPool {
-		t.Fatal("x509sslcertoverrideplatform caused a systemPool to be returned on OS other than windows or darwin")
 	}
 }

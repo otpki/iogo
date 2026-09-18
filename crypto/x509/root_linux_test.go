@@ -9,8 +9,8 @@ package x509
 import (
 	"encoding/pem"
 	"fmt"
-	"internal/testenv"
 	"os"
+	"os/exec"
 	"syscall"
 	"testing"
 )
@@ -24,7 +24,11 @@ func TestSetFallbackRoots(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if os.Getenv("CRYPTO_X509_SETFALLBACKROOTS_TEST") != "1" {
 				// Execute test in a separate process with CRYPTO_X509_SETFALBACKROOTS_TEST env.
-				cmd := testenv.Command(t, testenv.Executable(t), fmt.Sprintf("-test.run=^%v$", t.Name()), "-test.v")
+				execPath, err := os.Executable()
+				if err != nil {
+					t.Error(err)
+				}
+				cmd := exec.CommandContext(t.Context(), execPath, fmt.Sprintf("-test.run=^%v$", t.Name()), "-test.v")
 				cmd.Env = append(os.Environ(), "CRYPTO_X509_SETFALLBACKROOTS_TEST=1")
 				cmd.SysProcAttr = &syscall.SysProcAttr{
 					Cloneflags:  syscall.CLONE_NEWNS | syscall.CLONE_NEWUSER,
@@ -32,9 +36,7 @@ func TestSetFallbackRoots(t *testing.T) {
 					GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}},
 				}
 				out, err := cmd.CombinedOutput()
-				if testenv.SyscallIsNotSupported(err) {
-					t.Skipf("skipping: could not start process with CLONE_NEWNS and CLONE_NEWUSER: %v", err)
-				}
+
 				t.Logf("running with CRYPTO_X509_SETFALLBACKROOTS_TEST=1:\n%s", out)
 				if err != nil {
 					t.Errorf("CRYPTO_X509_SETFALLBACKROOTS_TEST=1 subprocess failed: %v", err)
@@ -47,9 +49,6 @@ func TestSetFallbackRoots(t *testing.T) {
 			// On linux all certs reside in /etc, so as we bind an empty dir, we
 			// get a full control over the system CAs, required for this test.
 			if err := syscall.Mount(t.TempDir(), "/etc", "", syscall.MS_BIND, ""); err != nil {
-				if testenv.SyscallIsNotSupported(err) {
-					t.Skipf("Failed to mount /etc: %v", err)
-				}
 				t.Fatalf("Failed to mount /etc: %v", err)
 			}
 
@@ -228,55 +227,6 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 		}
 		if got.Equal(fallback) {
 			t.Fatal("SystemCertPool returned the fallback CertPool")
-		}
-	})
-
-	test(t, "before_first_load_force_godebug", func(t *testing.T) {
-		testenv.SetGODEBUG(t, "x509usefallbackroots=1")
-
-		installSystemRootCAs(t)
-
-		fallback := newFallbackCertPool(t)
-		SetFallbackRoots(fallback)
-		got, err := SystemCertPool()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.Equal(fallback) {
-			t.Fatal("SystemCertPool returned a non-fallback CertPool")
-		}
-	})
-
-	test(t, "after_first_load_force_godebug", func(t *testing.T) {
-		testenv.SetGODEBUG(t, "x509usefallbackroots=1")
-
-		installSystemRootCAs(t)
-		SystemCertPool() // load system certs, before setting fallbacks
-
-		fallback := newFallbackCertPool(t)
-		SetFallbackRoots(fallback)
-		got, err := SystemCertPool()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.Equal(fallback) {
-			t.Fatal("SystemCertPool returned a non-fallback CertPool")
-		}
-	})
-
-	test(t, "after_first_load_force_godebug_no_system_certs", func(t *testing.T) {
-		testenv.SetGODEBUG(t, "x509usefallbackroots=1")
-
-		SystemCertPool() // load system certs, before setting fallbacks
-
-		fallback := newFallbackCertPool(t)
-		SetFallbackRoots(fallback)
-		got, err := SystemCertPool()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.Equal(fallback) {
-			t.Fatal("SystemCertPool returned a non-fallback CertPool")
 		}
 	})
 }

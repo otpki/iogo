@@ -14,6 +14,8 @@ import (
 	"math/big"
 	"testing"
 	"time"
+
+	_ "github.com/otpki/iogo/crypto"
 )
 
 func createHybridCert(t *testing.T) (*Certificate, crypto.Signer, crypto.Signer) {

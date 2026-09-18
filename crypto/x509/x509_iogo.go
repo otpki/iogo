@@ -8,6 +8,8 @@ import (
 	"crypto"
 	"encoding/asn1"
 
+	iogoCrypto "github.com/otpki/iogo/crypto"
+
 	circlPki "github.com/cloudflare/circl/pki"
 	circlSign "github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/dilithium/mode2"
@@ -99,6 +101,10 @@ func init() {
 				pubKeyAlgo PublicKeyAlgorithm
 				hash       crypto.Hash
 				isRSAPSS   bool
+				isIOGO     bool
+				iogoHash   iogoCrypto.Hash
+				sign       signFunc
+				verify     verifyFunc
 			}{
 				algo:       cs.sga,
 				name:       cs.scheme.Name(),
@@ -107,6 +113,10 @@ func init() {
 				pubKeyAlgo: cs.alg,
 				hash:       crypto.Hash(0),
 				isRSAPSS:   false,
+				isIOGO:     false,
+				iogoHash:   iogoCrypto.Hash(0),
+				sign:       noOpSigner,
+				verify:     noOpVerifier,
 			},
 		)
 	}

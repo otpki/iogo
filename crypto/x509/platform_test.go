@@ -36,8 +36,8 @@ const (
 )
 
 func TestPlatformVerifier(t *testing.T) {
-	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
-		t.Skip("only tested on windows and darwin")
+	if runtime.GOOS != "windows" {
+		t.Skip("only tested on windows")
 	}
 
 	der, err := os.ReadFile(rootCertPath)

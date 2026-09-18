@@ -1,5 +1,5 @@
 # IoGo (yoh-goh)
 
-![IoGo Mascot](misc/gopher-small.png "Our mascot")
+![IoGo Mascot](misc/gopher.png "Our mascot")
 
-IntegrityOneGolang is our in-house fork to support post-quantum cryptography natively within the x509 library.
+IOGO is our fork of crypto/x509 library to support more post-quantum cryptography, keys, hash algorithms, and x509 functionality.

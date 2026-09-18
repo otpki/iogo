@@ -10,9 +10,10 @@ import (
 	"crypto/ed25519"
 	"crypto/mldsa"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+
+	"github.com/otpki/iogo/crypto/x509"
 )
 
 func ExampleCertificate_Verify() {

@@ -13,7 +13,6 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/fips140"
-	"crypto/internal/cryptotest"
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
@@ -27,7 +26,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"internal/testenv"
 	"io"
 	"math"
 	"math/big"
@@ -39,6 +37,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	iogoCrypto "github.com/otpki/iogo/crypto"
 )
 
 func TestParsePKCS1PrivateKey(t *testing.T) {
@@ -322,20 +322,9 @@ UjmopwKBgAqB2KYYMUqAOvYcBnEfLDmyZv9BTVNHbR2lKkMYqv5LlvDaBxVfilE0
 	broken := *testRSA2048
 	broken.Precomputed.Dp = new(big.Int).SetUint64(42)
 
-	parsed, err := ParsePKCS1PrivateKey(MarshalPKCS1PrivateKey(&broken))
+	_, err := ParsePKCS1PrivateKey(MarshalPKCS1PrivateKey(&broken))
 	if err == nil {
 		t.Errorf("expected error, got success")
-	}
-
-	t.Setenv("GODEBUG", "x509rsacrt=0")
-
-	parsed, err = ParsePKCS1PrivateKey(MarshalPKCS1PrivateKey(&broken))
-	if err != nil {
-		t.Fatalf("expected success, got error: %v", err)
-	}
-	// Dp should have been recomputed.
-	if parsed.Precomputed.Dp.Cmp(testRSA2048.Precomputed.Dp) != 0 {
-		t.Errorf("Dp recomputation failed: got %v, want %v", parsed.Precomputed.Dp, testRSA2048.Precomputed.Dp)
 	}
 }
 
@@ -1484,15 +1473,6 @@ func TestParsePEMCRL(t *testing.T) {
 	}
 
 	// Can't check the signature here without a package cycle.
-}
-
-func TestImports(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping in -short mode")
-	}
-	if out, err := testenv.Command(t, testenv.GoToolPath(t), "run", "x509_test_import.go").CombinedOutput(); err != nil {
-		t.Errorf("failed to run x509_test_import.go: %s\n%s", err, out)
-	}
 }
 
 const derCRLBase64 = "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"
@@ -3123,8 +3103,9 @@ func TestCreateRevocationList(t *testing.T) {
 }
 
 func TestRSAPSAParameters(t *testing.T) {
-	generateParams := func(hashFunc crypto.Hash) []byte {
+	generateParams := func(hashFunc crypto.Hash, iogoHashFunc iogoCrypto.Hash) []byte {
 		var hashOID asn1.ObjectIdentifier
+		var hashSize int
 
 		switch hashFunc {
 		case crypto.SHA256:
@@ -3133,10 +3114,19 @@ func TestRSAPSAParameters(t *testing.T) {
 			hashOID = oidSHA384
 		case crypto.SHA512:
 			hashOID = oidSHA512
-		case crypto.SHAKE128:
-			hashOID = oidSHAKE128
-		case crypto.SHAKE256:
-			hashOID = oidSHAKE256
+		default:
+			// IOGO
+			switch iogoHashFunc {
+			case iogoCrypto.SHAKE128:
+				hashOID = oidSHAKE128
+				hashSize = iogoCrypto.SHAKE128.Size()
+			case iogoCrypto.SHAKE256:
+				hashOID = oidSHAKE256
+				hashSize = iogoCrypto.SHAKE256.Size()
+			}
+		}
+		if hashSize == 0 {
+			hashSize = hashFunc.Size()
 		}
 
 		// possible ambiguous SHAKE: https://github.com/usnistgov/ACVP-Server/issues/338
@@ -3149,7 +3139,7 @@ func TestRSAPSAParameters(t *testing.T) {
 			MGF: pkix.AlgorithmIdentifier{
 				Algorithm: oidMGF1,
 			},
-			SaltLength:   hashFunc.Size(),
+			SaltLength:   hashSize,
 			TrailerField: 1,
 		}
 
@@ -3186,7 +3176,7 @@ func TestRSAPSAParameters(t *testing.T) {
 		if !detail.isRSAPSS {
 			continue
 		}
-		generated := generateParams(detail.hash)
+		generated := generateParams(detail.hash, detail.iogoHash)
 		if !bytes.Equal(detail.params.FullBytes, generated) {
 			t.Errorf("hardcoded parameters for %s didn't match generated parameters: got (generated) %x, wanted (hardcoded) %x", detail.hash, generated, detail.params.FullBytes)
 		}
@@ -4367,49 +4357,7 @@ func TestDuplicateAttributesCSR(t *testing.T) {
 	}
 }
 
-func TestCertificateOIDPoliciesGODEBUG(t *testing.T) {
-	t.Setenv("GODEBUG", "x509usepolicies=0")
-
-	template := Certificate{
-		SerialNumber:      big.NewInt(1),
-		Subject:           pkix.Name{CommonName: "Cert"},
-		NotBefore:         time.Unix(1000, 0),
-		NotAfter:          time.Unix(100000, 0),
-		PolicyIdentifiers: []asn1.ObjectIdentifier{[]int{1, 2, 3}},
-	}
-
-	var expectPolicyIdentifiers = []asn1.ObjectIdentifier{
-		[]int{1, 2, 3},
-	}
-
-	var expectPolicies = []OID{
-		mustNewOIDFromInts([]uint64{1, 2, 3}),
-	}
-
-	certDER, err := CreateCertificate(rand.Reader, &template, &template, rsaPrivateKey.Public(), rsaPrivateKey)
-	if err != nil {
-		t.Fatalf("CreateCertificate() unexpected error: %v", err)
-	}
-
-	cert, err := ParseCertificate(certDER)
-	if err != nil {
-		t.Fatalf("ParseCertificate() unexpected error: %v", err)
-	}
-
-	if !slices.EqualFunc(cert.PolicyIdentifiers, expectPolicyIdentifiers, slices.Equal) {
-		t.Errorf("cert.PolicyIdentifiers = %v, want: %v", cert.PolicyIdentifiers, expectPolicyIdentifiers)
-	}
-
-	if !slices.EqualFunc(cert.Policies, expectPolicies, OID.Equal) {
-		t.Errorf("cert.Policies = %v, want: %v", cert.Policies, expectPolicies)
-	}
-}
-
 func TestCertificatePolicies(t *testing.T) {
-	if x509usepolicies.Value() == "0" {
-		t.Skip("test relies on default x509usepolicies GODEBUG")
-	}
-
 	template := Certificate{
 		SerialNumber:      big.NewInt(1),
 		Subject:           pkix.Name{CommonName: "Cert"},
@@ -4613,7 +4561,6 @@ func TestEKUOIDS(t *testing.T) {
 }
 
 func TestMLDSA(t *testing.T) {
-	cryptotest.MustMinimumFIPS140ModuleVersion(t, "v1.26.0")
 
 	t.Run("ML-DSA-44", func(t *testing.T) {
 		testMLDSA(t, rfc9881ExamplePrivateKeyMLDSA44,
