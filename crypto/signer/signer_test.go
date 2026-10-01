@@ -86,55 +86,55 @@ func TestMessageSignerExtension(t *testing.T) {
 		data   []byte
 	}{
 		{
-			signer: &signer.ExtendedMessageSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
 			opts:   x509.SHA256WithRSA.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
 			opts:   x509.SHA256WithRSAPSS.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&rsaMessageSigner{rsaKey}},
-			opts: &signer.ExtendedSignerOpts{
+			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE128WithRSAPSS,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&rsaMessageSigner{rsaKey}},
-			opts: &signer.ExtendedSignerOpts{
+			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE256WithRSAPSS,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
 			opts:   x509.ECDSAWithSHA256.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
 			opts:   x509.ECDSAWithSHA512.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&ecdsaMessageSigner{ecdsaKey}},
-			opts: &signer.ExtendedSignerOpts{
+			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE128,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&ecdsaMessageSigner{ecdsaKey}},
-			opts: &signer.ExtendedSignerOpts{
+			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE256,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedMessageSigner{&mldsaMessageSigner{mldsaKey}},
+			signer: &signer.ExtendedSigner{&mldsaMessageSigner{mldsaKey}},
 			data:   data,
 		},
 	}
@@ -173,14 +173,14 @@ func TestSignerExtension(t *testing.T) {
 		},
 		{
 			signer: &signer.ExtendedSigner{Signer: rsaKey},
-			opts: &signer.ExtendedSignerOpts{
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE128WithRSAPSS,
 			},
 			data: data,
 		},
 		{
 			signer: &signer.ExtendedSigner{Signer: rsaKey},
-			opts: &signer.ExtendedSignerOpts{
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE256WithRSAPSS,
 			},
 			data: data,
@@ -197,14 +197,14 @@ func TestSignerExtension(t *testing.T) {
 		},
 		{
 			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
-			opts: &signer.ExtendedSignerOpts{
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE128,
 			},
 			data: data,
 		},
 		{
 			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
-			opts: &signer.ExtendedSignerOpts{
+			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE256,
 			},
 			data: data,
@@ -240,7 +240,7 @@ func hashData(opts crypto.SignerOpts, data []byte) []byte {
 	if opts.HashFunc().Available() {
 		h = opts.HashFunc().New()
 	}
-	if extendedOpts, ok := opts.(*signer.ExtendedSignerOpts); ok && extendedOpts.IsExtended() {
+	if extendedOpts, ok := opts.(*x509.ExtendedSignerOpts); ok && extendedOpts.IsExtended() {
 		h = extendedOpts.ExtendedHashFunc().New()
 	}
 	// No prehash

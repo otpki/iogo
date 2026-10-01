@@ -574,18 +574,21 @@ var signatureAlgorithmDetails = []struct {
 
 	{SHAKE128WithRSAPSS, "RSASSA-PSS-SHAKE128", oidSignatureRSAPSSSHAKE128, pssParametersSHAKE128, RSA, crypto.Hash(0), true, true, iogoCrypto.SHAKE128,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
-			if err != nil {
-				return nil, err
-			}
-			saltLength := 0
-			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
-				saltLength = pssOpts.SaltLength
-			}
 			if pk, ok := signer.(*rsa.PrivateKey); ok {
+				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
+				if err != nil {
+					return nil, err
+				}
+				saltLength := 0
+				if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+					saltLength = pssOpts.SaltLength
+				}
 				return iogoRsa.SignPSS(rand, pk, hashed, iogoCrypto.SHAKE128.New, saltLength)
 			}
-			return nil, fmt.Errorf("expected rsa private key, got %T", signer)
+			return signer.Sign(rand, msg, &ExtendedSignerOpts{
+				SignerOpts:         opts,
+				SignatureAlgorithm: SHAKE128WithRSAPSS,
+			})
 		},
 		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
 			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, message)
@@ -604,18 +607,21 @@ var signatureAlgorithmDetails = []struct {
 	},
 	{SHAKE256WithRSAPSS, "RSASSA-PSS-SHAKE256", oidSignatureRSAPSSSHAKE256, pssParametersSHAKE256, RSA, crypto.Hash(0), true, true, iogoCrypto.SHAKE256,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
-			if err != nil {
-				return nil, err
-			}
-			saltLength := 0
-			if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
-				saltLength = pssOpts.SaltLength
-			}
 			if pk, ok := signer.(*rsa.PrivateKey); ok {
+				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
+				if err != nil {
+					return nil, err
+				}
+				saltLength := 0
+				if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+					saltLength = pssOpts.SaltLength
+				}
 				return iogoRsa.SignPSS(rand, pk, hashed, iogoCrypto.SHAKE256.New, saltLength)
 			}
-			return nil, fmt.Errorf("expected rsa private key, got %T", signer)
+			return signer.Sign(rand, msg, &ExtendedSignerOpts{
+				SignerOpts:         opts,
+				SignatureAlgorithm: SHAKE256WithRSAPSS,
+			})
 		},
 		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
 			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, message)
@@ -635,14 +641,17 @@ var signatureAlgorithmDetails = []struct {
 
 	{ECDSAWithSHAKE128, "ECDSA-SHAKE128", oidSignatureECDSAWithSHAKE128, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE128,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
-			if err != nil {
-				return nil, err
-			}
 			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
+				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
+				if err != nil {
+					return nil, err
+				}
 				return ecdsa.SignASN1(rand, pk, hashed)
 			}
-			return nil, fmt.Errorf("expected ecdsa private key, got %T", signer)
+			return signer.Sign(rand, msg, &ExtendedSignerOpts{
+				SignerOpts:         opts,
+				SignatureAlgorithm: ECDSAWithSHAKE128,
+			})
 		},
 		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
 			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, message)
@@ -660,14 +669,17 @@ var signatureAlgorithmDetails = []struct {
 	},
 	{ECDSAWithSHAKE256, "ECDSA-SHAKE256", oidSignatureECDSAWithSHAKE256, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE256,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
-			if err != nil {
-				return nil, err
-			}
 			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
+				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
+				if err != nil {
+					return nil, err
+				}
 				return ecdsa.SignASN1(rand, pk, hashed)
 			}
-			return nil, fmt.Errorf("expected ecdsa private key, got %T", signer)
+			return signer.Sign(rand, msg, &ExtendedSignerOpts{
+				SignerOpts:         opts,
+				SignatureAlgorithm: ECDSAWithSHAKE256,
+			})
 		},
 		func(pub crypto.PublicKey, message, signature []byte, opts any) error {
 			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, message)
@@ -2075,6 +2087,7 @@ func signTBS(tbs []byte, key crypto.Signer, sigAlg SignatureAlgorithm, rand io.R
 	if sigAlg.IsExtended() {
 		return sigAlg.GetSign()(key, rand, tbs, nil)
 	}
+
 	hashFunc := sigAlg.hashFunc()
 
 	var signerOpts crypto.SignerOpts = hashFunc
