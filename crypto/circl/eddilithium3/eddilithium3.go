@@ -7,8 +7,8 @@ package eddilithium3
 import (
 	"io"
 
-	circlSign "github.com/cloudflare/circl/sign"
-	circlEddilithium3 "github.com/cloudflare/circl/sign/eddilithium3"
+	circlSign "github.com/otpki/circl/sign"
+	circlEddilithium3 "github.com/otpki/circl/sign/eddilithium3"
 )
 
 func GenerateKey(rand io.Reader) (circlSign.PublicKey, circlSign.PrivateKey, error) {

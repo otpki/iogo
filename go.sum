@@ -1,7 +1,7 @@
 filippo.io/bigmod v0.1.0 h1:UNzDk7y9ADKST+axd9skUpBQeW7fG2KrTZyOE4uGQy8=
 filippo.io/bigmod v0.1.0/go.mod h1:OjOXDNlClLblvXdwgFFOQFJEocLhhtai8vGLy0JCZlI=
-github.com/otpki/circl v0.0.0-20260310190244-baa88566ae46 h1:F4+jy0GgJ4h7/6ifoIuwnW6wpTlmjbOpl1tqJfPiD2s=
-github.com/otpki/circl v0.0.0-20260310190244-baa88566ae46/go.mod h1:2eXP6Qfat4O/Yhh8BznvKnJ+uzEoTQ6jVKJRn81BiS4=
+github.com/otpki/circl v0.0.0-20261001193338-a5d70b6db5c0 h1:x87yEof+ydzrcM4ZYkMdE3kaFc3mRTTL0zrTNOa93MY=
+github.com/otpki/circl v0.0.0-20261001193338-a5d70b6db5c0/go.mod h1:TFOYNuGAMfAj/dNz1Hfq5B308UvY7236nGEdNPfyGig=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=

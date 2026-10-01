@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"math/big"
 
-	circlEcc "github.com/cloudflare/circl/ecc"
-	circlPki "github.com/cloudflare/circl/pki"
+	circlEcc "github.com/otpki/circl/ecc"
+	circlPki "github.com/otpki/circl/pki"
 )
 
 const ecPrivKeyVersion = 1

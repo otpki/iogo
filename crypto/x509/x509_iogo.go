@@ -10,15 +10,15 @@ import (
 
 	iogoCrypto "github.com/otpki/iogo/crypto"
 
-	circlPki "github.com/cloudflare/circl/pki"
-	circlSign "github.com/cloudflare/circl/sign"
-	"github.com/cloudflare/circl/sign/dilithium/mode2"
-	"github.com/cloudflare/circl/sign/dilithium/mode3"
-	"github.com/cloudflare/circl/sign/dilithium/mode5"
-	"github.com/cloudflare/circl/sign/ed448"
-	"github.com/cloudflare/circl/sign/eddilithium2"
-	"github.com/cloudflare/circl/sign/eddilithium3"
-	"github.com/cloudflare/circl/sign/slhdsa"
+	circlPki "github.com/otpki/circl/pki"
+	circlSign "github.com/otpki/circl/sign"
+	"github.com/otpki/circl/sign/dilithium/mode2"
+	"github.com/otpki/circl/sign/dilithium/mode3"
+	"github.com/otpki/circl/sign/dilithium/mode5"
+	"github.com/otpki/circl/sign/ed448"
+	"github.com/otpki/circl/sign/eddilithium2"
+	"github.com/otpki/circl/sign/eddilithium3"
+	"github.com/otpki/circl/sign/slhdsa"
 )
 
 // To add a signature scheme from Circl
