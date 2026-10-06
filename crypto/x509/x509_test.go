@@ -3108,6 +3108,10 @@ func TestRSAPSAParameters(t *testing.T) {
 		var hashSize int
 
 		switch hashFunc {
+		case crypto.SHA1:
+			hashOID = oidSHA1
+		case crypto.SHA224:
+			hashOID = oidSHA224
 		case crypto.SHA256:
 			hashOID = oidSHA256
 		case crypto.SHA384:

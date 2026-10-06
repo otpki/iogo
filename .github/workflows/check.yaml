@@ -1,0 +1,24 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup CI
+      uses: ./.github/actions/setup-ci
+      with:
+        github-app-id: ${{ secrets.GH_APP_ID }}
+        github-app-private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+        tools: aqua
+
+    - name: Run tests
+      run: just test-ci

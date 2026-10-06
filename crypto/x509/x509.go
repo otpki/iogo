@@ -257,9 +257,11 @@ const (
 	DSAWithSHA1   // Unsupported.
 	DSAWithSHA256 // Unsupported.
 	ECDSAWithSHA1 // Only supported for signing, and verification of CRLs, CSRs, and OCSP responses.
+	ECDSAWithSHA224
 	ECDSAWithSHA256
 	ECDSAWithSHA384
 	ECDSAWithSHA512
+	SHA1WithRSAPSS
 	SHA256WithRSAPSS
 	SHA384WithRSAPSS
 	SHA512WithRSAPSS
@@ -488,6 +490,7 @@ var (
 	oidSignatureDSAWithSHA1       = asn1.ObjectIdentifier{1, 2, 840, 10040, 4, 3}
 	oidSignatureDSAWithSHA256     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 2}
 	oidSignatureECDSAWithSHA1     = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 1}
+	oidSignatureECDSAWithSHA224   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 1}
 	oidSignatureECDSAWithSHA256   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
 	oidSignatureECDSAWithSHA384   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
 	oidSignatureECDSAWithSHA512   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 4}
@@ -503,6 +506,8 @@ var (
 	oidSignatureRSAWithSHA3384    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 15}
 	oidSignatureRSAWithSHA3512    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 16}
 
+	oidSHA1     = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	oidSHA224   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 7}
 	oidSHA256   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 	oidSHA384   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
 	oidSHA512   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
@@ -550,12 +555,14 @@ var signatureAlgorithmDetails = []struct {
 	{SHA256WithRSA, "SHA256-RSA", oidSignatureSHA256WithRSA, asn1.NullRawValue, RSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{SHA384WithRSA, "SHA384-RSA", oidSignatureSHA384WithRSA, asn1.NullRawValue, RSA, crypto.SHA384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{SHA512WithRSA, "SHA512-RSA", oidSignatureSHA512WithRSA, asn1.NullRawValue, RSA, crypto.SHA512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{SHA1WithRSAPSS, "SHA1-RSAPSS", oidSignatureRSAPSS, pssParametersSHA1, RSA, crypto.SHA1, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{SHA256WithRSAPSS, "SHA256-RSAPSS", oidSignatureRSAPSS, pssParametersSHA256, RSA, crypto.SHA256, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{SHA384WithRSAPSS, "SHA384-RSAPSS", oidSignatureRSAPSS, pssParametersSHA384, RSA, crypto.SHA384, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{SHA512WithRSAPSS, "SHA512-RSAPSS", oidSignatureRSAPSS, pssParametersSHA512, RSA, crypto.SHA512, true, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{DSAWithSHA1, "DSA-SHA1", oidSignatureDSAWithSHA1, emptyRawValue, DSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{DSAWithSHA256, "DSA-SHA256", oidSignatureDSAWithSHA256, emptyRawValue, DSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{ECDSAWithSHA1, "ECDSA-SHA1", oidSignatureECDSAWithSHA1, emptyRawValue, ECDSA, crypto.SHA1, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
+	{ECDSAWithSHA224, "ECDSA-SHA224", oidSignatureECDSAWithSHA224, emptyRawValue, ECDSA, crypto.SHA224, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{ECDSAWithSHA256, "ECDSA-SHA256", oidSignatureECDSAWithSHA256, emptyRawValue, ECDSA, crypto.SHA256, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{ECDSAWithSHA384, "ECDSA-SHA384", oidSignatureECDSAWithSHA384, emptyRawValue, ECDSA, crypto.SHA384, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
 	{ECDSAWithSHA512, "ECDSA-SHA512", oidSignatureECDSAWithSHA512, emptyRawValue, ECDSA, crypto.SHA512, false, false, iogoCrypto.Hash(0), noOpSigner, noOpVerifier},
@@ -707,6 +714,7 @@ var emptyRawValue = asn1.RawValue{}
 //   - saltLength contains the length of the associated hash
 //   - trailerField always contains the default trailerFieldBC value
 var (
+	pssParametersSHA1     = asn1.RawValue{FullBytes: []byte{48, 44, 160, 11, 48, 9, 6, 5, 43, 14, 3, 2, 26, 5, 0, 161, 24, 48, 22, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 9, 6, 5, 43, 14, 3, 2, 26, 5, 0, 162, 3, 2, 1, 20}}
 	pssParametersSHA256   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 1, 5, 0, 162, 3, 2, 1, 32}}
 	pssParametersSHA384   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 2, 5, 0, 162, 3, 2, 1, 48}}
 	pssParametersSHA512   = asn1.RawValue{FullBytes: []byte{48, 52, 160, 15, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 161, 28, 48, 26, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 8, 48, 13, 6, 9, 96, 134, 72, 1, 101, 3, 4, 2, 3, 5, 0, 162, 3, 2, 1, 64}}

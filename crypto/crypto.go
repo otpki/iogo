@@ -6,6 +6,7 @@
 package crypto
 
 import (
+	stdCrypto "crypto"
 	"fmt"
 	"hash"
 	"strconv"
@@ -17,6 +18,16 @@ type Hasher interface {
 	New() hash.Hash
 	Available() bool
 	Size() int
+}
+
+func IsZeroHash(h Hasher) bool {
+	switch t := h.(type) {
+	case stdCrypto.Hash:
+		return t == stdCrypto.Hash(0)
+	case Hash:
+		return t == Hash(0)
+	}
+	return false
 }
 
 // Hash identifies a cryptographic hash function that is implemented in another

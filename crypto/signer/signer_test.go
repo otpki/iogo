@@ -86,55 +86,56 @@ func TestMessageSignerExtension(t *testing.T) {
 		data   []byte
 	}{
 		{
-			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{Signer: rsaKey},
 			opts:   x509.SHA256WithRSA.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{Signer: rsaKey},
 			opts:   x509.SHA256WithRSAPSS.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{Signer: rsaKey},
 			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE128WithRSAPSS,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&rsaMessageSigner{rsaKey}},
+			signer: &signer.ExtendedSigner{Signer: rsaKey},
 			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.SHAKE256WithRSAPSS,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
 			opts:   x509.ECDSAWithSHA256.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
 			opts:   x509.ECDSAWithSHA512.GetHashFunc(),
 			data:   data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
 			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE128,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&ecdsaMessageSigner{ecdsaKey}},
+			signer: &signer.ExtendedSigner{Signer: ecdsaKey},
 			opts: &x509.ExtendedSignerOpts{
 				SignatureAlgorithm: x509.ECDSAWithSHAKE256,
 			},
 			data: data,
 		},
 		{
-			signer: &signer.ExtendedSigner{&mldsaMessageSigner{mldsaKey}},
+			signer: &signer.ExtendedSigner{Signer: mldsaKey},
+			opts:   x509.NewSignerOpts(x509.MLDSA44),
 			data:   data,
 		},
 	}
@@ -211,6 +212,7 @@ func TestSignerExtension(t *testing.T) {
 		},
 		{
 			signer: &signer.ExtendedSigner{Signer: mldsaKey},
+			opts:   x509.NewSignerOpts(x509.MLDSA44),
 			data:   data,
 		},
 	}
