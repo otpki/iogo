@@ -51,6 +51,9 @@ With [Just](https://github.com/casey/just) installed, use `just test-ci`,
 and Windows. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow
 and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
+The library retains the relevant upstream Go history beneath the IOGO changes.
+See [UPSTREAM.md](UPSTREAM.md) for provenance and the Go update procedure.
+
 ## License and attribution
 
 This library derives from [the Go project](https://go.googlesource.com/go).

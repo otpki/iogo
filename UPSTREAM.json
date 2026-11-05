@@ -1,0 +1,15 @@
+{
+  "go_repository": "https://go.googlesource.com/go",
+  "go_tag": "go1.27.0",
+  "go_commit": "8af21751f066eced273ca3ce49506b366847c623",
+  "projected_commit": "dfc0beba6b967127b03557c9cf17b0a80c211f04",
+  "filter_repo_version": "2.47.0",
+  "filter_repo_sha256": "67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94",
+  "iogo_repository": "https://github.com/otpki/iogo",
+  "iogo_initial_snapshot": "3feef1b71edcc2990e2d0850cfb68075841650ce",
+  "iogo_prepared_snapshot": "1ba05dd781a901f2080afeb5ab30653920384968",
+  "iogo_prepared_tree": "036c35fc774b5d9a535e300640a6b23fe2c324e7",
+  "replayed_snapshot_commit": "1d6db6fde56b595374ff4b2362903731ff71bd9f",
+  "base_branch": "base",
+  "base_commit": "dfc0beba6b967127b03557c9cf17b0a80c211f04"
+}
