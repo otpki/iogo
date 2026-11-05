@@ -1,0 +1,16 @@
+IOGO is maintained by OTPKI and derives from the Go project's crypto packages.
+Copyright notices in individual source files and the Go Authors' BSD-style
+LICENSE are retained. The accompanying PATENTS file is the Go project's
+Additional IP Rights Grant and retains its original scope and terms.
+
+Upstream source: https://go.googlesource.com/go
+Fork source: https://github.com/otpki/iogo
+
+IOGO adds post-quantum signature schemes, curve and hash support, signer
+adapters, and X.509 extensions. It is not an official Go distribution.
+
+The module depends on OTPKI's fork of Cloudflare CIRCL, filippo.io/bigmod,
+golang.org/x/crypto, and other modules listed in go.mod and go.sum. These
+dependencies retain their own licenses and copyright notices; this file
+does not replace or change their terms. Source fixtures retain any notices
+in their accompanying files, including crypto/x509/testdata/nist-pkits/README.md.

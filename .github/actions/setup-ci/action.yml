@@ -1,43 +1,14 @@
 name: Setup CI
-description: Configure authentication, IOGO, caches, and project tooling
-
-inputs:
-  github-app-id:
-    description: GitHub App ID used for private dependencies
-    required: true
-  github-app-private-key:
-    description: GitHub App private key used for private dependencies
-    required: true
+description: Install Go and Just for the standalone IOGO library
 
 runs:
   using: composite
   steps:
-    - name: Generate GitHub App token
-      id: generate-token
-      uses: actions/create-github-app-token@v3
-      with:
-        app-id: ${{ inputs.github-app-id }}
-        private-key: ${{ inputs.github-app-private-key }}
-        owner: otpki
-        repositories: |
-          ${{ github.event.repository.name }}
-          circl
-
-    - name: Configure private GitHub dependencies
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-      run: |
-        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-        git submodule sync --recursive
-        git submodule update --init --recursive
-
     - name: Setup GO
       uses: actions/setup-go@v7
-      with: 
-        go-version: '1.27'
+      with:
+        go-version-file: go.mod
+        cache: true
 
     - name: Setup Just
       uses: extractions/setup-just@v4
-
-
