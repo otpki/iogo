@@ -10,15 +10,15 @@ import (
 
 	iogoCrypto "github.com/otpki/iogo/crypto"
 
-	circlPki "github.com/otpki/circl/pki"
-	circlSign "github.com/otpki/circl/sign"
-	"github.com/otpki/circl/sign/dilithium/mode2"
-	"github.com/otpki/circl/sign/dilithium/mode3"
-	"github.com/otpki/circl/sign/dilithium/mode5"
-	"github.com/otpki/circl/sign/ed448"
-	"github.com/otpki/circl/sign/eddilithium2"
-	"github.com/otpki/circl/sign/eddilithium3"
-	"github.com/otpki/circl/sign/slhdsa"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
+	"github.com/cloudflare/circl/sign/dilithium/mode2"
+	"github.com/cloudflare/circl/sign/dilithium/mode3"
+	"github.com/cloudflare/circl/sign/dilithium/mode5"
+	"github.com/cloudflare/circl/sign/ed448"
+	"github.com/cloudflare/circl/sign/eddilithium2"
+	"github.com/cloudflare/circl/sign/eddilithium3"
+	"github.com/cloudflare/circl/sign/slhdsa"
 )
 
 // To add a signature scheme from Circl
@@ -92,6 +92,11 @@ func PublicKeyAlgorithmByCirclScheme(scheme circlSign.Scheme) PublicKeyAlgorithm
 
 func init() {
 	for _, cs := range circlSchemes {
+		certificateScheme, ok := cs.scheme.(circlPki.CertificateScheme)
+		if !ok {
+			// Some legacy schemes support signing but have no certificate OID.
+			continue
+		}
 		signatureAlgorithmDetails = append(signatureAlgorithmDetails,
 			struct {
 				algo       SignatureAlgorithm
@@ -108,7 +113,7 @@ func init() {
 			}{
 				algo:       cs.sga,
 				name:       cs.scheme.Name(),
-				oid:        cs.scheme.(circlPki.CertificateScheme).Oid(),
+				oid:        certificateScheme.Oid(),
 				params:     emptyRawValue,
 				pubKeyAlgo: cs.alg,
 				hash:       crypto.Hash(0),

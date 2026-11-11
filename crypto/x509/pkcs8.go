@@ -15,9 +15,9 @@ import (
 	"errors"
 	"fmt"
 
-	circlEcc "github.com/otpki/circl/ecc"
-	circlPki "github.com/otpki/circl/pki"
-	circlSign "github.com/otpki/circl/sign"
+	circlEcc "github.com/cloudflare/circl/ecc"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
 )
 
 // pkcs8 reflects an ASN.1, PKCS #8 PrivateKey. See

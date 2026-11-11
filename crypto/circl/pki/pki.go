@@ -5,8 +5,8 @@
 package pki
 
 import (
-	circlPki "github.com/otpki/circl/pki"
-	circlSign "github.com/otpki/circl/sign"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
 )
 
 func UnmarshalPKIXPrivateKey(data []byte) (circlSign.PrivateKey, error) {

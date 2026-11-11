@@ -7,8 +7,8 @@ package mode3
 import (
 	"io"
 
-	circlSign "github.com/otpki/circl/sign"
-	circlMode3 "github.com/otpki/circl/sign/dilithium/mode3"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlMode3 "github.com/cloudflare/circl/sign/dilithium/mode3"
 )
 
 func GenerateKey(rand io.Reader) (circlSign.PublicKey, circlSign.PrivateKey, error) {

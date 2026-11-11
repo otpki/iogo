@@ -7,8 +7,8 @@ package slhdsa
 import (
 	"io"
 
-	circlSign "github.com/otpki/circl/sign"
-	circlSlhdsa "github.com/otpki/circl/sign/slhdsa"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlSlhdsa "github.com/cloudflare/circl/sign/slhdsa"
 )
 
 type ID = circlSlhdsa.ID

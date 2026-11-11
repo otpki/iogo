@@ -5,8 +5,8 @@
 package nist
 
 import (
-	"github.com/otpki/circl/ecc"
-	"github.com/otpki/circl/ecc/nist"
+	"github.com/cloudflare/circl/ecc"
+	"github.com/cloudflare/circl/ecc/nist"
 )
 
 func P192() ecc.Curve {

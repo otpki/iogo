@@ -5,8 +5,8 @@
 package secg
 
 import (
-	"github.com/otpki/circl/ecc"
-	"github.com/otpki/circl/ecc/secg"
+	"github.com/cloudflare/circl/ecc"
+	"github.com/cloudflare/circl/ecc/secg"
 )
 
 func Secp192r1() ecc.Curve {

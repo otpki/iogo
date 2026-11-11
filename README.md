@@ -12,11 +12,21 @@ toolchain; installing a custom Go compiler is not required.
 
 ## Requirements and installation
 
-Use Go 1.27 or newer:
+Use Go 1.27 or newer. In your application's module, select OTPKI's CIRCL fork
+before installing IOGO:
 
 ```sh
+go mod edit -replace=github.com/cloudflare/circl=github.com/otpki/circl@v0.0.0-20261110221322-cfbb4ec73021
 go get github.com/otpki/iogo@main
 ```
+
+The CIRCL fork retains the upstream `github.com/cloudflare/circl` module and
+import paths. Its OTPKI extensions require the replacement above. Go does not
+inherit dependency modules' `replace` directives, so consuming applications
+must declare this replacement themselves.
+
+Legacy Dilithium2/3/5 schemes in this CIRCL revision have no certificate OID.
+Their X.509 key marshaling is unsupported; raw scheme operations remain available.
 
 Applications should pin a reviewed version or commit in `go.mod`.
 Import the fork explicitly, for example:

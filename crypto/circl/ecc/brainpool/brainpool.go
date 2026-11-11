@@ -5,8 +5,8 @@
 package brainpool
 
 import (
-	"github.com/otpki/circl/ecc"
-	"github.com/otpki/circl/ecc/brainpool"
+	"github.com/cloudflare/circl/ecc"
+	"github.com/cloudflare/circl/ecc/brainpool"
 )
 
 func P160t1() ecc.Curve {

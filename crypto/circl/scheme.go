@@ -5,7 +5,7 @@
 package circl
 
 import (
-	circlSign "github.com/otpki/circl/sign"
+	circlSign "github.com/cloudflare/circl/sign"
 )
 
 type PublicKey = circlSign.PublicKey

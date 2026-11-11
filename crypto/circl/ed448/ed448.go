@@ -7,8 +7,8 @@ package ed448
 import (
 	"io"
 
-	circlSign "github.com/otpki/circl/sign"
-	circlEd448 "github.com/otpki/circl/sign/ed448"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlEd448 "github.com/cloudflare/circl/sign/ed448"
 )
 
 func GenerateKey(rand io.Reader) (circlSign.PublicKey, circlSign.PrivateKey, error) {

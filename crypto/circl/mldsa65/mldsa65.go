@@ -7,8 +7,8 @@ package mldsa65
 import (
 	"io"
 
-	circlSign "github.com/otpki/circl/sign"
-	circlMldsa65 "github.com/otpki/circl/sign/mldsa/mldsa65"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlMldsa65 "github.com/cloudflare/circl/sign/mldsa/mldsa65"
 )
 
 type PublicKey = circlMldsa65.PublicKey

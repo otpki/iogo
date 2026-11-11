@@ -5,8 +5,8 @@
 package x963
 
 import (
-	"github.com/otpki/circl/ecc"
-	"github.com/otpki/circl/ecc/x963"
+	"github.com/cloudflare/circl/ecc"
+	"github.com/cloudflare/circl/ecc/x963"
 )
 
 func Ansip224r1() ecc.Curve {

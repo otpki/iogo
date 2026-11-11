@@ -38,6 +38,7 @@ import (
 	"testing"
 	"time"
 
+	circlPki "github.com/cloudflare/circl/pki"
 	iogoCrypto "github.com/otpki/iogo/crypto"
 )
 
@@ -709,6 +710,10 @@ func TestCreateSelfSignedCertificate(t *testing.T) {
 		tests = append(tests, test{"ML-DSA-44", mldsaPriv.PublicKey(), mldsaPriv, true, MLDSA44})
 	}
 	for _, cs := range circlSchemes {
+		if _, ok := cs.scheme.(circlPki.CertificateScheme); !ok {
+			// Schemes without OIDs are covered by TestCIRCLSchemesWithoutCertificateOID.
+			continue
+		}
 		pk, sk, err := cs.scheme.GenerateKey()
 		if err != nil {
 			t.Fatal()
