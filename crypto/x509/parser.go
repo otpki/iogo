@@ -31,7 +31,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	circlPki "github.com/otpki/circl/pki"
+	circlPki "github.com/cloudflare/circl/pki"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )

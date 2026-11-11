@@ -1,5 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Security
-    url: https://github.com/otpki/iogo/security/policy
-    about: Report suspected vulnerabilities privately using the security policy.
