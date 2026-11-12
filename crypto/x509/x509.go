@@ -58,9 +58,10 @@ import (
 
 	iogoCrypto "github.com/otpki/iogo/crypto"
 
-	circlEcc "github.com/otpki/circl/ecc"
-	circlPki "github.com/otpki/circl/pki"
-	circlSign "github.com/otpki/circl/sign"
+	circlEcc "github.com/cloudflare/circl/ecc"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlEcdsa "github.com/cloudflare/circl/sign/ecdsa"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -648,12 +649,15 @@ var signatureAlgorithmDetails = []struct {
 
 	{ECDSAWithSHAKE128, "ECDSA-SHAKE128", oidSignatureECDSAWithSHAKE128, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE128,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
+			if err != nil {
+				return nil, err
+			}
 			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
-				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE128, msg)
-				if err != nil {
-					return nil, err
-				}
 				return ecdsa.SignASN1(rand, pk, hashed)
+			}
+			if pk, ok := signer.(*circlEcdsa.PrivateKey); ok {
+				return circlEcdsa.SignASN1(rand, pk, hashed)
 			}
 			return signer.Sign(rand, msg, &ExtendedSignerOpts{
 				SignerOpts:         opts,
@@ -676,12 +680,15 @@ var signatureAlgorithmDetails = []struct {
 	},
 	{ECDSAWithSHAKE256, "ECDSA-SHAKE256", oidSignatureECDSAWithSHAKE256, emptyRawValue, ECDSA, crypto.Hash(0), false, true, iogoCrypto.SHAKE256,
 		func(signer crypto.Signer, rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+			hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
+			if err != nil {
+				return nil, err
+			}
 			if pk, ok := signer.(*ecdsa.PrivateKey); ok {
-				hashed, err := iogoCrypto.DoHash(iogoCrypto.SHAKE256, msg)
-				if err != nil {
-					return nil, err
-				}
 				return ecdsa.SignASN1(rand, pk, hashed)
+			}
+			if pk, ok := signer.(*circlEcdsa.PrivateKey); ok {
+				return circlEcdsa.SignASN1(rand, pk, hashed)
 			}
 			return signer.Sign(rand, msg, &ExtendedSignerOpts{
 				SignerOpts:         opts,

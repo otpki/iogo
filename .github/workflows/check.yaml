@@ -16,21 +16,11 @@ concurrency:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-    - uses: actions/checkout@v7
-      with:
-        persist-credentials: false
-
-    - name: Setup CI
-      uses: ./.github/actions/setup-ci
-
-    - name: Vet
-      run: just lint
-
-    - name: Run tests
-      run: just test-ci
+    uses: otpki/.github/.github/workflows/reusable-go-check.yml@v1
+    with:
+      os-matrix: '["ubuntu-latest", "macos-latest", "windows-latest"]'
+      check-clean-tree: false
+      commands: |
+        just lint
+        just test-ci
+      vulncheck-command: just vulncheck

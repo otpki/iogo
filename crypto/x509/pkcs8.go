@@ -14,10 +14,12 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"math/big"
 
-	circlEcc "github.com/otpki/circl/ecc"
-	circlPki "github.com/otpki/circl/pki"
-	circlSign "github.com/otpki/circl/sign"
+	circlEcc "github.com/cloudflare/circl/ecc"
+	circlPki "github.com/cloudflare/circl/pki"
+	circlSign "github.com/cloudflare/circl/sign"
+	circlEcdsa "github.com/cloudflare/circl/sign/ecdsa"
 )
 
 // pkcs8 reflects an ASN.1, PKCS #8 PrivateKey. See
@@ -33,7 +35,8 @@ type pkcs8 struct {
 // ParsePKCS8PrivateKey parses an unencrypted private key in PKCS #8, ASN.1 DER form.
 //
 // It returns a *[rsa.PrivateKey], an *[ecdsa.PrivateKey], an [ed25519.PrivateKey] (not
-// a pointer), a *[mldsa.PrivateKey], or an *[ecdh.PrivateKey] (for X25519).
+// a pointer), a *[mldsa.PrivateKey], an *[ecdh.PrivateKey] (for X25519), or a
+// *[circlEcdsa.PrivateKey] for ECDSA keys on circl-registered curves.
 // More types might be supported in the future.
 //
 // This kind of key is commonly encoded in PEM blocks of type "PRIVATE KEY".
@@ -68,6 +71,16 @@ func ParsePKCS8PrivateKey(der []byte) (key any, err error) {
 		key, err = parseECPrivateKey(namedCurveOID, privKey.PrivateKey)
 		if err != nil {
 			return nil, errors.New("x509: failed to parse EC private key embedded in PKCS#8: " + err.Error())
+		}
+		if ecKey, ok := key.(*ecdsa.PrivateKey); ok {
+			if _, isCircl := ecKey.Curve.(circlEcc.Curve); isCircl {
+				size := (ecKey.Curve.Params().N.BitLen() + 7) / 8
+				circlKey, err := circlEcdsa.ParseRawPrivateKey(ecKey.Curve, ecKey.D.FillBytes(make([]byte, size)))
+				if err != nil {
+					return nil, errors.New("x509: failed to parse EC private key embedded in PKCS#8: " + err.Error())
+				}
+				return circlKey, nil
+			}
 		}
 		return key, nil
 
@@ -147,8 +160,9 @@ func ParsePKCS8PrivateKey(der []byte) (key any, err error) {
 // MarshalPKCS8PrivateKey converts a private key to PKCS #8, ASN.1 DER form.
 //
 // The following key types are currently supported: *[rsa.PrivateKey],
-// *[ecdsa.PrivateKey], [ed25519.PrivateKey] (not a pointer), *[mldsa.PrivateKey],
-// and *[ecdh.PrivateKey]. Unsupported key types result in an error.
+// *[ecdsa.PrivateKey], *[circlEcdsa.PrivateKey], [ed25519.PrivateKey] (not a
+// pointer), *[mldsa.PrivateKey], and *[ecdh.PrivateKey]. Unsupported key types
+// result in an error.
 //
 // This kind of key is commonly encoded in PEM blocks of type "PRIVATE KEY".
 //
@@ -169,28 +183,22 @@ func MarshalPKCS8PrivateKey(key any) ([]byte, error) {
 		privKey.PrivateKey = MarshalPKCS1PrivateKey(k)
 
 	case *ecdsa.PrivateKey:
-		var oidBytes []byte
-		var err error
-		if circlCurve, ok := k.Curve.(circlEcc.Curve); ok {
-			oidBytes, err = asn1.Marshal(circlCurve.Oid())
-		} else {
-			oid, ok := oidFromNamedCurve(k.Curve)
-			if !ok {
-				return nil, errors.New("x509: unknown curve while marshaling to PKCS#8")
-			}
-			oidBytes, err = asn1.Marshal(oid)
+		if err := marshalECPrivateKeyPKCS8(&privKey, k); err != nil {
+			return nil, err
 		}
+
+	case *circlEcdsa.PrivateKey:
+		pub, ok := k.Public().(*ecdsa.PublicKey)
+		if !ok {
+			return nil, errors.New("x509: unexpected circl ECDSA public key type while marshaling to PKCS#8")
+		}
+		dBytes, err := k.Bytes()
 		if err != nil {
-			return nil, errors.New("x509: failed to marshal curve OID: " + err.Error())
+			return nil, err
 		}
-		privKey.Algo = pkix.AlgorithmIdentifier{
-			Algorithm: oidPublicKeyECDSA,
-			Parameters: asn1.RawValue{
-				FullBytes: oidBytes,
-			},
-		}
-		if privKey.PrivateKey, err = marshalECPrivateKeyWithOID(k, nil); err != nil {
-			return nil, errors.New("x509: failed to marshal EC private key while building PKCS#8: " + err.Error())
+		stdKey := &ecdsa.PrivateKey{PublicKey: *pub, D: new(big.Int).SetBytes(dBytes)}
+		if err := marshalECPrivateKeyPKCS8(&privKey, stdKey); err != nil {
+			return nil, err
 		}
 
 	case ed25519.PrivateKey:
@@ -262,4 +270,31 @@ func MarshalPKCS8PrivateKey(key any) ([]byte, error) {
 	}
 
 	return asn1.Marshal(privKey)
+}
+
+func marshalECPrivateKeyPKCS8(privKey *pkcs8, k *ecdsa.PrivateKey) error {
+	var oidBytes []byte
+	var err error
+	if circlCurve, ok := k.Curve.(circlEcc.Curve); ok {
+		oidBytes, err = asn1.Marshal(circlCurve.Oid())
+	} else {
+		oid, ok := oidFromNamedCurve(k.Curve)
+		if !ok {
+			return errors.New("x509: unknown curve while marshaling to PKCS#8")
+		}
+		oidBytes, err = asn1.Marshal(oid)
+	}
+	if err != nil {
+		return errors.New("x509: failed to marshal curve OID: " + err.Error())
+	}
+	privKey.Algo = pkix.AlgorithmIdentifier{
+		Algorithm: oidPublicKeyECDSA,
+		Parameters: asn1.RawValue{
+			FullBytes: oidBytes,
+		},
+	}
+	if privKey.PrivateKey, err = marshalECPrivateKeyWithOID(k, nil); err != nil {
+		return errors.New("x509: failed to marshal EC private key while building PKCS#8: " + err.Error())
+	}
+	return nil
 }
